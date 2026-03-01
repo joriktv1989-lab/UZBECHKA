@@ -1,0 +1,48 @@
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DataProvider } from './context/DataContext';
+import { LanguageProvider } from './context/LanguageContext';
+import { Login } from './components/Login';
+import { ClientApp } from './components/ClientApp';
+import { AdminApp } from './components/AdminApp';
+import { AgentApp } from './components/AgentApp';
+import { CourierApp } from './components/CourierApp';
+
+function AppContent() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-beige">
+        <div className="w-12 h-12 border-4 border-gold border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
+  switch (user.role) {
+    case 'admin':
+      return <AdminApp />;
+    case 'agent':
+      return <AgentApp />;
+    case 'courier':
+      return <CourierApp />;
+    case 'client':
+    default:
+      return <ClientApp />;
+  }
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AuthProvider>
+        <DataProvider>
+          <AppContent />
+        </DataProvider>
+      </AuthProvider>
+    </LanguageProvider>
+  );
+}
