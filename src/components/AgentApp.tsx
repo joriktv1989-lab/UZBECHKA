@@ -166,6 +166,15 @@ export const AgentApp: React.FC = () => {
             <span className="text-[10px] font-black text-uzum-muted uppercase tracking-widest">Agent</span>
             <span className="text-xs font-bold text-uzum-text">{user?.name}</span>
           </div>
+          <div className="w-10 h-10 rounded-full bg-uzum-bg overflow-hidden border-2 border-white shadow-sm">
+            {user?.photo ? (
+              <img src={user.photo} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-uzum-muted">
+                <User size={20} />
+              </div>
+            )}
+          </div>
           <button onClick={logout} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all">
             <LogOut size={20} />
           </button>
@@ -318,7 +327,7 @@ export const AgentApp: React.FC = () => {
             <div className="grid grid-cols-1 gap-4">
               {products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).map(product => (
                 <div key={product.id} className="bg-white p-4 rounded-2xl border border-[#e2e5eb] flex gap-4">
-                  <img src={product.imageUrl} className="w-24 h-24 rounded-xl object-cover" />
+                  <img src={product.image} className="w-24 h-24 rounded-xl object-cover" />
                   <div className="flex-1 flex flex-col justify-between">
                     <div>
                       <h4 className="font-bold text-uzum-text">{product.name}</h4>

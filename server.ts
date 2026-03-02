@@ -45,6 +45,7 @@ try {
       image TEXT,
       videoUrl TEXT,
       description TEXT,
+      stock INTEGER DEFAULT 0,
       FOREIGN KEY (categoryId) REFERENCES categories(id) ON DELETE SET NULL
     );
 
@@ -123,6 +124,9 @@ try {
 
   // Migrations for existing tables
   try {
+    db.prepare("ALTER TABLE products ADD COLUMN stock INTEGER DEFAULT 0").run();
+  } catch (e) {}
+  try {
     db.prepare("ALTER TABLE products ADD COLUMN discountPrice REAL").run();
   } catch (e) {}
   try {
@@ -184,6 +188,14 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+  // Serve firm photo
+  app.get("/api/image/firm_photo", (req, res) => {
+    // In a real app we'd serve a file, but here we can redirect or serve a base64
+    // Since I don't have the file on disk, I'll use a placeholder or the one from the prompt if I can.
+    // For now, I'll use a high-quality placeholder that matches the theme.
+    res.redirect("https://picsum.photos/seed/uzbechka/800/1200");
+  });
 
   // Auth Endpoints
   app.post("/api/auth/register", (req, res) => {
@@ -287,11 +299,19 @@ async function startServer() {
   });
 
   app.post("/api/products", (req, res) => {
-    const { name, price, discountPrice, categoryId, description, image, videoUrl } = req.body;
-    const result = db.prepare("INSERT INTO products (name, price, discountPrice, categoryId, description, image, videoUrl) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-      name, price, discountPrice, categoryId, description, image, videoUrl
+    const { name, price, discountPrice, categoryId, description, image, videoUrl, stock } = req.body;
+    const result = db.prepare("INSERT INTO products (name, price, discountPrice, categoryId, description, image, videoUrl, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+      name, price, discountPrice, categoryId, description, image, videoUrl, stock || 0
     );
     res.json({ id: result.lastInsertRowid, ...req.body });
+  });
+
+  app.put("/api/products/:id", (req, res) => {
+    const { name, price, discountPrice, categoryId, description, image, videoUrl, stock } = req.body;
+    db.prepare("UPDATE products SET name = ?, price = ?, discountPrice = ?, categoryId = ?, description = ?, image = ?, videoUrl = ?, stock = ? WHERE id = ?").run(
+      name, price, discountPrice, categoryId, description, image, videoUrl, stock || 0, req.params.id
+    );
+    res.json({ success: true });
   });
 
   app.delete("/api/products/:id", (req, res) => {
@@ -413,7 +433,7 @@ async function startServer() {
   // Debts Endpoints
   app.get("/api/debts", (req, res) => {
     const debts = db.prepare(`
-      SELECT d.*, u.name as clientName, u.phone as clientPhone, 
+      SELECT d.*, u.name as clientName, u.phone as clientPhone, u.photo as clientPhoto,
              a.name as agentName, cr.name as courierName
       FROM debts d
       JOIN users u ON d.clientId = u.id

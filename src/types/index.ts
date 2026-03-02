@@ -26,6 +26,7 @@ export interface Product {
   image: string;
   videoUrl?: string;
   description: string;
+  stock?: number;
 }
 
 export interface Banner {

@@ -4,8 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ShoppingCart, Package, Clock, User, LogOut, Plus, Minus, Trash2, MapPin, CreditCard, Wallet, Banknote, Play, ChevronRight, ChevronLeft, LayoutDashboard, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { YMaps, Map, Placemark } from '@pbe/react-yandex-maps';
+import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 import { ConfirmDialog } from './ConfirmDialog';
+
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 export const ClientApp: React.FC = () => {
   const { products, categories, orders, banners, createOrder, users, debts, settings, updateUser } = useData();
@@ -121,9 +123,22 @@ export const ClientApp: React.FC = () => {
             <button onClick={() => setLanguage(language === 'ru' ? 'uz' : 'ru')} className="text-xs font-bold text-uzum-muted uppercase">
               {language === 'ru' ? 'UZ' : 'RU'}
             </button>
-            <div className="w-8 h-8 bg-uzum-bg rounded-full flex items-center justify-center text-uzum-muted">
-              <User size={18} />
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black text-uzum-muted uppercase tracking-widest">Client</span>
+              <span className="text-xs font-bold text-uzum-text">{user?.name}</span>
             </div>
+            <div className="w-10 h-10 rounded-full bg-uzum-bg overflow-hidden border-2 border-white shadow-sm">
+              {user?.photo ? (
+                <img src={user.photo} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-uzum-muted">
+                  <User size={20} />
+                </div>
+              )}
+            </div>
+            <button onClick={logout} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all">
+              <LogOut size={20} />
+            </button>
           </div>
         </div>
         
@@ -461,17 +476,30 @@ export const ClientApp: React.FC = () => {
 
                     <div className="space-y-2">
                       <label className="block text-xs font-bold text-uzum-muted uppercase">{t('location')} на карте</label>
-                      <div className="rounded-xl overflow-hidden border border-[#e2e5eb] h-40 relative">
-                        <YMaps>
-                          <Map 
-                            defaultState={{ center: [41.311081, 69.240562], zoom: 12 }} 
-                            width="100%" 
-                            height="100%"
-                            onClick={(e: any) => setCoords(e.get('coords'))}
-                          >
-                            {coords && <Placemark geometry={coords} />}
-                          </Map>
-                        </YMaps>
+                      <div className="rounded-xl overflow-hidden border border-[#e2e5eb] h-40 relative flex items-center justify-center bg-stone-50">
+                        {GOOGLE_MAPS_API_KEY ? (
+                          <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+                            <Map 
+                              defaultCenter={{ lat: 41.311081, lng: 69.240562 }} 
+                              defaultZoom={12}
+                              className="h-full w-full"
+                              onClick={(e: any) => {
+                                if (e.detail.latLng) {
+                                  setCoords([e.detail.latLng.lat, e.detail.latLng.lng]);
+                                }
+                              }}
+                            >
+                              {coords && <Marker position={{ lat: coords[0], lng: coords[1] }} />}
+                            </Map>
+                          </APIProvider>
+                        ) : (
+                          <div className="text-center p-4">
+                            <MapPin size={24} className="text-uzum-muted mx-auto mb-2" />
+                            <p className="text-[10px] font-black text-uzum-muted uppercase tracking-widest">
+                              Пожалуйста, настройте Google Maps API Key
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
 

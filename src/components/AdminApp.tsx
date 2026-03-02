@@ -8,18 +8,21 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
-import { YMaps, Map, Placemark } from '@pbe/react-yandex-maps';
+import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 import { AdminAI } from './AdminAI';
 import { ConfirmDialog } from './ConfirmDialog';
 
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
 export const AdminApp: React.FC = () => {
-  const { products, categories, orders, stats, users, banners, settings, debts, addProduct, deleteProduct, addCategory, deleteCategory, updateOrder, deleteOrder, deleteUser, updateUser, addBanner, updateBanner, deleteBanner, updateSettings, updateDebt, speak } = useData();
+  const { products, categories, orders, stats, users, banners, settings, debts, addProduct, updateProduct, deleteProduct, addCategory, deleteCategory, updateOrder, deleteOrder, deleteUser, updateUser, addBanner, updateBanner, deleteBanner, updateSettings, updateDebt, speak } = useData();
   const { logout, user: currentUser } = useAuth();
   const { register } = useAuth();
   const { refreshData } = useData();
   const { t, language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'banners' | 'ai' | 'settings' | 'debts' | 'tracker'>('dashboard');
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
   const [showAddBanner, setShowAddBanner] = useState(false);
@@ -86,6 +89,22 @@ export const AdminApp: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 pr-4 border-r border-stone-100">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black text-uzum-muted uppercase tracking-widest">Admin</span>
+              <span className="text-xs font-bold text-stone-800">{currentUser?.name}</span>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-stone-100 overflow-hidden border-2 border-white shadow-sm">
+              {currentUser?.photo ? (
+                <img src={currentUser.photo} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-stone-400">
+                  <User size={20} />
+                </div>
+              )}
+            </div>
+          </div>
+          
           <div className="flex gap-1 bg-uzum-bg p-1 rounded-xl">
             <button onClick={() => setLanguage('ru')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${language === 'ru' ? 'bg-uzum-primary text-white shadow-md' : 'text-uzum-muted'}`}>RU</button>
             <button onClick={() => setLanguage('uz')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${language === 'uz' ? 'bg-uzum-primary text-white shadow-md' : 'text-uzum-muted'}`}>UZ</button>
@@ -329,9 +348,21 @@ export const AdminApp: React.FC = () => {
                         ) : (
                           <span className="text-gold-dark font-black text-lg">{product.price.toLocaleString()} <span className="text-[10px]">UZS</span></span>
                         )}
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[9px] font-black text-stone-400 uppercase tracking-widest">Склад:</span>
+                          <span className={`text-[10px] font-black ${product.stock && product.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {product.stock || 0} шт
+                          </span>
+                        </div>
                       </div>
                       
-                      <button className="p-2 bg-stone-50 text-stone-400 rounded-xl hover:bg-gold/10 hover:text-gold transition-all">
+                      <button 
+                        onClick={() => {
+                          setImagePreview(product.image);
+                          setEditingProduct(product);
+                        }}
+                        className="p-2 bg-stone-50 text-stone-400 rounded-xl hover:bg-gold/10 hover:text-gold transition-all"
+                      >
                         <Edit size={18} />
                       </button>
                     </div>
@@ -767,12 +798,25 @@ export const AdminApp: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {debts.map(debt => (
-                      <tr key={debt.id} className="hover:bg-stone-50 transition-colors">
-                        <td className="p-4">
-                          <p className="text-sm font-bold">{debt.clientName}</p>
-                          <p className="text-xs text-stone-400">{debt.clientPhone}</p>
-                        </td>
+                      {debts.map(debt => (
+                        <tr key={debt.id} className="hover:bg-stone-50 transition-colors">
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-stone-100 overflow-hidden border border-stone-200 flex-shrink-0">
+                                {debt.clientPhoto ? (
+                                  <img src={debt.clientPhoto} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-stone-400">
+                                    <User size={16} />
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold">{debt.clientName}</p>
+                                <p className="text-xs text-stone-400">{debt.clientPhone}</p>
+                              </div>
+                            </div>
+                          </td>
                         <td className="p-4">
                           {debt.courierName ? (
                             <div className="flex items-center gap-2">
@@ -819,40 +863,50 @@ export const AdminApp: React.FC = () => {
         {activeTab === 'tracker' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             <h2 className="text-2xl font-bold">{t('tracker')}</h2>
-            <div className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-stone-100 h-[600px] relative overflow-hidden">
-              <YMaps>
-                <Map 
-                  state={{ center: [41.311081, 69.240562], zoom: 12 }} 
-                  width="100%" 
-                  height="100%"
-                  className="rounded-3xl overflow-hidden"
-                >
-                  {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat && u.lng).map(u => (
-                    <Placemark 
-                      key={u.id}
-                      geometry={[u.lat, u.lng]} 
-                      options={{ 
-                        preset: u.role === 'agent' ? 'islands#blueCircleDotIcon' : 'islands#orangeCircleDotIcon' 
-                      }}
-                      properties={{ 
-                        balloonContent: `${u.name} (${u.role === 'agent' ? t('agent') : t('courier')})\nПоследний раз: ${u.lastSeen ? new Date(u.lastSeen).toLocaleTimeString() : 'Неизвестно'}` 
-                      }}
-                    />
-                  ))}
-                </Map>
-              </YMaps>
+            <div className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-stone-100 h-[600px] relative overflow-hidden flex items-center justify-center">
+              {GOOGLE_MAPS_API_KEY ? (
+                <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+                  <Map 
+                    defaultCenter={{ lat: 41.311081, lng: 69.240562 }} 
+                    defaultZoom={12}
+                    className="rounded-3xl overflow-hidden h-full w-full"
+                  >
+                    {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).map(u => (
+                      <Marker 
+                        key={u.id}
+                        position={{ lat: Number(u.lat), lng: Number(u.lng) }}
+                        title={`${u.name} (${u.role === 'agent' ? t('agent') : t('courier')})`}
+                      />
+                    ))}
+                  </Map>
+                </APIProvider>
+              ) : (
+                <div className="text-center p-8">
+                  <Navigation size={48} className="text-stone-300 mx-auto mb-4" />
+                  <p className="text-sm font-black text-stone-400 uppercase tracking-widest">
+                    Пожалуйста, настройте Google Maps API Key в секретах
+                  </p>
+                </div>
+              )}
               
-              <div className="absolute top-8 right-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 space-y-3">
-                <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Легенда</h4>
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                  <span>{t('agent')}</span>
+              {GOOGLE_MAPS_API_KEY && (
+                <div className="absolute top-8 right-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 space-y-3">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Легенда</h4>
+                    <span className="bg-gold/10 text-gold text-[9px] px-2 py-0.5 rounded-full font-black">
+                      {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).length} в сети
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-bold">
+                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                    <span>{t('agent')}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-bold">
+                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                    <span>{t('courier')}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                  <span>{t('courier')}</span>
-                </div>
-              </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -861,10 +915,11 @@ export const AdminApp: React.FC = () => {
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#e2e5eb] px-2 py-3 flex justify-around items-center z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
         {[
-          {id: 'dashboard', icon: LayoutDashboard, label: t('dashboard') },
+          { id: 'dashboard', icon: LayoutDashboard, label: t('dashboard') },
           { id: 'products', icon: Package, label: t('products') },
           { id: 'orders', icon: ShoppingBag, label: t('orders') },
           { id: 'ai', icon: Bot, label: 'AI' },
+          { id: 'banners', icon: ImageIcon, label: t('banners') },
           { id: 'debts', icon: CreditCard, label: t('debts') },
           { id: 'tracker', icon: Navigation, label: t('tracker') },
           { id: 'users', icon: Users, label: t('users') },
@@ -977,7 +1032,8 @@ export const AdminApp: React.FC = () => {
                   categoryId: Number(formData.get('categoryId')),
                   description: formData.get('description') as string,
                   image: imagePreview || formData.get('imageUrl') as string || `https://picsum.photos/seed/${Math.random()}/400/300`,
-                  videoUrl: formData.get('videoUrl') as string
+                  videoUrl: formData.get('videoUrl') as string,
+                  stock: Number(formData.get('stock'))
                 });
                 speak(`Товар ${name} успешно добавлен`);
                 setShowAddProduct(false);
@@ -1026,6 +1082,11 @@ export const AdminApp: React.FC = () => {
                   </div>
 
                   <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Количество на складе</label>
+                    <input name="stock" type="number" required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" placeholder="0" defaultValue={0} />
+                  </div>
+
+                  <div>
                     <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('category')}</label>
                     {categories.length > 0 ? (
                       <select name="categoryId" required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium appearance-none">
@@ -1052,6 +1113,115 @@ export const AdminApp: React.FC = () => {
                 <button type="submit" className="w-full gold-gradient text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.5rem] shadow-xl hover:shadow-gold/30 transition-all active:scale-95 mt-4">
                   {t('save')}
                 </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Product Modal */}
+      <AnimatePresence>
+        {editingProduct && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg shadow-2xl border border-stone-100 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h3 className="text-2xl font-bold tracking-tight text-stone-800">{t('edit')}</h3>
+                  <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mt-1">{editingProduct.name}</p>
+                </div>
+                <button onClick={() => { setEditingProduct(null); setImagePreview(null); }} className="p-2 bg-stone-50 rounded-xl text-stone-400 hover:text-stone-800 transition-all"><X size={20} /></button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const name = formData.get('name') as string;
+                await updateProduct(editingProduct.id, {
+                  name,
+                  price: Number(formData.get('price')),
+                  discountPrice: formData.get('discountPrice') ? Number(formData.get('discountPrice')) : undefined,
+                  categoryId: Number(formData.get('categoryId')),
+                  description: formData.get('description') as string,
+                  image: imagePreview || formData.get('imageUrl') as string || editingProduct.image,
+                  videoUrl: formData.get('videoUrl') as string,
+                  stock: Number(formData.get('stock'))
+                });
+                speak(`Товар ${name} успешно обновлен`);
+                setEditingProduct(null);
+                setImagePreview(null);
+              }} className="space-y-5">
+                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-stone-200 rounded-[2rem] bg-stone-50 hover:bg-stone-100 transition-all cursor-pointer relative overflow-hidden group h-48">
+                  {imagePreview ? (
+                    <img src={imagePreview} className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <Upload className="text-stone-300 mb-2" size={40} />
+                      <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Загрузить фото блюда</p>
+                    </div>
+                  )}
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer" 
+                  />
+                  {imagePreview && (
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <p className="text-white text-xs font-bold uppercase tracking-widest">Сменить фото</p>
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-5">
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Image URL (Optional)</label>
+                    <input name="imageUrl" defaultValue={editingProduct.image} placeholder="https://..." className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('name')}</label>
+                    <input name="name" defaultValue={editingProduct.name} required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" placeholder="Название блюда" />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('price')}</label>
+                      <input name="price" type="number" defaultValue={editingProduct.price} required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('discount')}</label>
+                      <input name="discountPrice" type="number" defaultValue={editingProduct.discountPrice} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" placeholder="0" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Количество на складе</label>
+                    <input name="stock" type="number" required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" placeholder="0" defaultValue={editingProduct.stock || 0} />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('category')}</label>
+                    <select name="categoryId" defaultValue={editingProduct.categoryId} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium appearance-none">
+                      {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('description')}</label>
+                    <textarea name="description" defaultValue={editingProduct.description} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium h-24 resize-none" placeholder="Описание блюда..."></textarea>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Video URL (Optional)</label>
+                    <input name="videoUrl" defaultValue={editingProduct.videoUrl} placeholder="https://youtube.com/..." className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
+                  </div>
+                </div>
+                <div className="pt-4">
+                  <button type="submit" className="w-full gold-gradient text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.5rem] shadow-xl hover:shadow-gold/30 transition-all active:scale-95">
+                    {t('save')}
+                  </button>
+                </div>
               </form>
             </motion.div>
           </motion.div>
@@ -1157,16 +1327,25 @@ export const AdminApp: React.FC = () => {
                 <button onClick={() => setSelectedOrderForMap(null)} className="p-2 bg-stone-50 rounded-xl text-stone-400 hover:text-stone-800 transition-all"><X size={20} /></button>
               </div>
               
-              <div className="rounded-3xl overflow-hidden border border-stone-100 h-[400px] relative shadow-inner">
-                <YMaps>
-                  <Map 
-                    state={{ center: [selectedOrderForMap.latitude, selectedOrderForMap.longitude], zoom: 15 }} 
-                    width="100%" 
-                    height="100%"
-                  >
-                    <Placemark geometry={[selectedOrderForMap.latitude, selectedOrderForMap.longitude]} />
-                  </Map>
-                </YMaps>
+              <div className="rounded-3xl overflow-hidden border border-stone-100 h-[400px] relative shadow-inner flex items-center justify-center bg-stone-50">
+                {GOOGLE_MAPS_API_KEY ? (
+                  <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+                    <Map 
+                      defaultCenter={{ lat: selectedOrderForMap.latitude, lng: selectedOrderForMap.longitude }} 
+                      defaultZoom={15}
+                      className="h-full w-full"
+                    >
+                      <Marker position={{ lat: selectedOrderForMap.latitude, lng: selectedOrderForMap.longitude }} />
+                    </Map>
+                  </APIProvider>
+                ) : (
+                  <div className="text-center p-8">
+                    <MapPin size={48} className="text-stone-300 mx-auto mb-4" />
+                    <p className="text-sm font-black text-stone-400 uppercase tracking-widest">
+                      Пожалуйста, настройте Google Maps API Key
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 flex justify-end">

@@ -15,6 +15,7 @@ interface DataContextType {
   debts: Debt[];
   refreshData: () => Promise<void>;
   addProduct: (product: Partial<Product>) => Promise<void>;
+  updateProduct: (id: number, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
   addCategory: (name: string) => Promise<void>;
   deleteCategory: (id: number) => Promise<void>;
@@ -124,7 +125,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     refreshData();
-  }, []);
+    const interval = setInterval(refreshData, 10000);
+    return () => clearInterval(interval);
+  }, [language, settings.voice_enabled]);
 
   const addProduct = async (product: Partial<Product>) => {
     await apiFetch('/api/products', {
@@ -137,6 +140,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteProduct = async (id: number) => {
     await apiFetch(`/api/products/${id}`, { method: 'DELETE' });
+    await refreshData();
+  };
+
+  const updateProduct = async (id: number, product: Partial<Product>) => {
+    await apiFetch(`/api/products/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(product),
+    });
     await refreshData();
   };
 
@@ -254,7 +266,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <DataContext.Provider value={{ 
       products, categories, orders, stats, users, banners, settings, debts,
-      refreshData, addProduct, deleteProduct, addCategory, deleteCategory, createOrder, updateOrder, deleteOrder, deleteUser, updateUser,
+      refreshData, addProduct, updateProduct, deleteProduct, addCategory, deleteCategory, createOrder, updateOrder, deleteOrder, deleteUser, updateUser,
       addBanner, updateBanner, deleteBanner, updateSettings, addDebt, updateDebt, updateUserLocation, speak
     }}>
       {children}
