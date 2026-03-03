@@ -8,11 +8,13 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
-import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
+import { YMaps, Map, Placemark, Polyline } from '@pbe/react-yandex-maps';
 import { AdminAI } from './AdminAI';
 import { ConfirmDialog } from './ConfirmDialog';
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+import { apiFetch } from '../utils/api';
+
+const YANDEX_MAPS_API_KEY = (import.meta.env.VITE_YANDEX_MAPS_API_KEY || '').trim();
 
 export const AdminApp: React.FC = () => {
   const { products, categories, orders, stats, users, banners, settings, debts, addProduct, updateProduct, deleteProduct, addCategory, deleteCategory, updateOrder, deleteOrder, deleteUser, updateUser, addBanner, updateBanner, deleteBanner, updateSettings, updateDebt, speak } = useData();
@@ -30,6 +32,20 @@ export const AdminApp: React.FC = () => {
   const [selectedOrderForMap, setSelectedOrderForMap] = useState<any>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [userPhotoPreview, setUserPhotoPreview] = useState<string | null>(null);
+  const [selectedUserForTrack, setSelectedUserForTrack] = useState<number | null>(null);
+  const [userTrack, setUserTrack] = useState<[number, number][]>([]);
+
+  const fetchUserTrack = async (userId: number) => {
+    try {
+      const response = await apiFetch(`/api/users/${userId}/history`);
+      const data = await response.json();
+      // Yandex Maps expects [lat, lng]
+      setUserTrack(data.map((h: any) => [h.lat, h.lng]));
+      setSelectedUserForTrack(userId);
+    } catch (e) {
+      console.error('Error fetching track:', e);
+    }
+  };
   const [lastOrderCount, setLastOrderCount] = useState(orders.length);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; onConfirm: () => void; title?: string; message?: string }>({ isOpen: false, onConfirm: () => {} });
 
@@ -864,49 +880,63 @@ export const AdminApp: React.FC = () => {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             <h2 className="text-2xl font-bold">{t('tracker')}</h2>
             <div className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-stone-100 h-[600px] relative overflow-hidden flex items-center justify-center">
-              {GOOGLE_MAPS_API_KEY ? (
-                <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-                  <Map 
-                    defaultCenter={{ lat: 41.311081, lng: 69.240562 }} 
-                    defaultZoom={12}
-                    className="rounded-3xl overflow-hidden h-full w-full"
-                  >
-                    {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).map(u => (
-                      <Marker 
-                        key={u.id}
-                        position={{ lat: Number(u.lat), lng: Number(u.lng) }}
-                        title={`${u.name} (${u.role === 'agent' ? t('agent') : t('courier')})`}
-                      />
-                    ))}
-                  </Map>
-                </APIProvider>
-              ) : (
-                <div className="text-center p-8">
-                  <Navigation size={48} className="text-stone-300 mx-auto mb-4" />
-                  <p className="text-sm font-black text-stone-400 uppercase tracking-widest">
-                    Пожалуйста, настройте Google Maps API Key в секретах
-                  </p>
-                </div>
-              )}
+              <YMaps query={{ apikey: YANDEX_MAPS_API_KEY }}>
+                <Map 
+                  defaultState={{ center: [41.311081, 69.240562], zoom: 12 }} 
+                  className="rounded-3xl overflow-hidden h-full w-full"
+                >
+                  {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).map(u => (
+                    <Placemark 
+                      key={u.id}
+                      geometry={[Number(u.lat), Number(u.lng)]}
+                      properties={{
+                        hintContent: u.name,
+                        balloonContent: `${u.name} (${u.role === 'agent' ? t('agent') : t('courier')})`
+                      }}
+                      options={{
+                        preset: u.role === 'agent' ? 'islands#blueCircleDotIcon' : 'islands#orangeCircleDotIcon'
+                      }}
+                      onClick={() => fetchUserTrack(u.id)}
+                    />
+                  ))}
+                  {selectedUserForTrack && userTrack.length > 0 && (
+                    <Polyline
+                      geometry={userTrack}
+                      options={{
+                        balloonCloseButton: false,
+                        strokeColor: '#D4AF37',
+                        strokeWidth: 4,
+                        strokeOpacity: 0.8,
+                      }}
+                    />
+                  )}
+                </Map>
+              </YMaps>
               
-              {GOOGLE_MAPS_API_KEY && (
-                <div className="absolute top-8 right-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 space-y-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Легенда</h4>
-                    <span className="bg-gold/10 text-gold text-[9px] px-2 py-0.5 rounded-full font-black">
-                      {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).length} в сети
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-bold">
-                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                    <span>{t('agent')}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-bold">
-                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                    <span>{t('courier')}</span>
-                  </div>
+              <div className="absolute top-8 right-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 space-y-3">
+                <div className="flex justify-between items-center mb-1">
+                  <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Легенда</h4>
+                  <span className="bg-gold/10 text-gold text-[9px] px-2 py-0.5 rounded-full font-black">
+                    {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).length} в сети
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                  <span>{t('agent')}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                  <span>{t('courier')}</span>
+                </div>
+                {selectedUserForTrack && (
+                  <button 
+                    onClick={() => { setSelectedUserForTrack(null); setUserTrack([]); }}
+                    className="w-full mt-2 py-2 bg-stone-100 text-stone-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-stone-200 transition-all"
+                  >
+                    Скрыть трек
+                  </button>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -1328,24 +1358,14 @@ export const AdminApp: React.FC = () => {
               </div>
               
               <div className="rounded-3xl overflow-hidden border border-stone-100 h-[400px] relative shadow-inner flex items-center justify-center bg-stone-50">
-                {GOOGLE_MAPS_API_KEY ? (
-                  <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-                    <Map 
-                      defaultCenter={{ lat: selectedOrderForMap.latitude, lng: selectedOrderForMap.longitude }} 
-                      defaultZoom={15}
-                      className="h-full w-full"
-                    >
-                      <Marker position={{ lat: selectedOrderForMap.latitude, lng: selectedOrderForMap.longitude }} />
-                    </Map>
-                  </APIProvider>
-                ) : (
-                  <div className="text-center p-8">
-                    <MapPin size={48} className="text-stone-300 mx-auto mb-4" />
-                    <p className="text-sm font-black text-stone-400 uppercase tracking-widest">
-                      Пожалуйста, настройте Google Maps API Key
-                    </p>
-                  </div>
-                )}
+                <YMaps query={{ apikey: YANDEX_MAPS_API_KEY }}>
+                  <Map 
+                    defaultState={{ center: [selectedOrderForMap.latitude, selectedOrderForMap.longitude], zoom: 15 }} 
+                    className="h-full w-full"
+                  >
+                    <Placemark geometry={[selectedOrderForMap.latitude, selectedOrderForMap.longitude]} />
+                  </Map>
+                </YMaps>
               </div>
 
               <div className="mt-6 flex justify-end">
@@ -1397,7 +1417,7 @@ export const AdminApp: React.FC = () => {
                   if (editingUser) {
                     await updateUser(editingUser.id, data);
                   } else {
-                    await fetch('/api/auth/register', {
+                    await apiFetch('/api/auth/register', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(data),

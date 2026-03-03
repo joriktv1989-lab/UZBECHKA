@@ -4,10 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ShoppingCart, Package, Clock, User, LogOut, Plus, Minus, Trash2, MapPin, CreditCard, Wallet, Banknote, Play, ChevronRight, ChevronLeft, LayoutDashboard, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
+import { YMaps, Map, Placemark } from '@pbe/react-yandex-maps';
 import { ConfirmDialog } from './ConfirmDialog';
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+const YANDEX_MAPS_API_KEY = (import.meta.env.VITE_YANDEX_MAPS_API_KEY || '').trim();
 
 export const ClientApp: React.FC = () => {
   const { products, categories, orders, banners, createOrder, users, debts, settings, updateUser } = useData();
@@ -157,7 +157,11 @@ export const ClientApp: React.FC = () => {
 
       <main className="p-4 space-y-6">
         {activeTab === 'menu' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="space-y-6"
+          >
             {/* Banners Carousel */}
             {banners.filter(b => b.isActive).length > 0 && (
               <div className="relative h-44 rounded-2xl overflow-hidden shadow-sm group">
@@ -246,7 +250,11 @@ export const ClientApp: React.FC = () => {
         )}
 
         {activeTab === 'orders' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="space-y-4"
+          >
             <h2 className="text-xl font-bold">{t('myOrders')}</h2>
             {myOrders.length === 0 ? (
               <div className="text-center py-20 text-uzum-muted">
@@ -477,29 +485,20 @@ export const ClientApp: React.FC = () => {
                     <div className="space-y-2">
                       <label className="block text-xs font-bold text-uzum-muted uppercase">{t('location')} на карте</label>
                       <div className="rounded-xl overflow-hidden border border-[#e2e5eb] h-40 relative flex items-center justify-center bg-stone-50">
-                        {GOOGLE_MAPS_API_KEY ? (
-                          <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-                            <Map 
-                              defaultCenter={{ lat: 41.311081, lng: 69.240562 }} 
-                              defaultZoom={12}
-                              className="h-full w-full"
-                              onClick={(e: any) => {
-                                if (e.detail.latLng) {
-                                  setCoords([e.detail.latLng.lat, e.detail.latLng.lng]);
-                                }
-                              }}
-                            >
-                              {coords && <Marker position={{ lat: coords[0], lng: coords[1] }} />}
-                            </Map>
-                          </APIProvider>
-                        ) : (
-                          <div className="text-center p-4">
-                            <MapPin size={24} className="text-uzum-muted mx-auto mb-2" />
-                            <p className="text-[10px] font-black text-uzum-muted uppercase tracking-widest">
-                              Пожалуйста, настройте Google Maps API Key
-                            </p>
-                          </div>
-                        )}
+                        <YMaps query={{ apikey: YANDEX_MAPS_API_KEY }}>
+                          <Map 
+                            defaultState={{ center: [41.311081, 69.240562], zoom: 12 }} 
+                            className="h-full w-full"
+                            onClick={(e: any) => {
+                              const coords = e.get('coords');
+                              if (coords) {
+                                setCoords([coords[0], coords[1]]);
+                              }
+                            }}
+                          >
+                            {coords && <Placemark geometry={[coords[0], coords[1]]} />}
+                          </Map>
+                        </YMaps>
                       </div>
                     </div>
 

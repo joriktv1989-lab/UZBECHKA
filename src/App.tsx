@@ -9,6 +9,7 @@ import { CourierApp } from './components/CourierApp';
 
 import { SplashScreen } from './components/SplashScreen';
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -26,21 +27,39 @@ function AppContent() {
     );
   }
 
-  if (!user) {
-    return <Login />;
-  }
-
-  switch (user.role) {
-    case 'admin':
-      return <AdminApp />;
-    case 'agent':
-      return <AgentApp />;
-    case 'courier':
-      return <CourierApp />;
-    case 'client':
-    default:
-      return <ClientApp />;
-  }
+  return (
+    <AnimatePresence mode="wait">
+      {!user ? (
+        <motion.div
+          key="login"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Login />
+        </motion.div>
+      ) : (
+        <motion.div
+          key={user.role}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 1.05 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+        >
+          {(() => {
+            switch (user.role) {
+              case 'admin': return <AdminApp />;
+              case 'agent': return <AgentApp />;
+              case 'courier': return <CourierApp />;
+              case 'client':
+              default: return <ClientApp />;
+            }
+          })()}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 }
 
 export default function App() {

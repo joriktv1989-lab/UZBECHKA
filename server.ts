@@ -1,5 +1,8 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
+import { createServer } from "http";
+import { Server } from "socket.io";
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -16,6 +19,7 @@ const db = new Database(dbPath);
 
 try {
   // Initialize database
+  console.log("Initializing database at:", dbPath);
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,6 +107,15 @@ try {
       FOREIGN KEY (clientId) REFERENCES users(id),
       FOREIGN KEY (orderId) REFERENCES orders(id)
     );
+
+    CREATE TABLE IF NOT EXISTS location_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users(id)
+    );
   `);
 
   // Seed default settings
@@ -120,6 +133,30 @@ try {
     ];
     const insertSetting = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
     defaultSettings.forEach(s => insertSetting.run(s.key, s.value));
+  }
+
+  // Seed default banners
+  const bannerCount = db.prepare("SELECT COUNT(*) as count FROM banners").get() as { count: number };
+  if (bannerCount.count === 0) {
+    const defaultBanners = [
+      { 
+        title: 'An\'anaviy O\'zbek Palovi', 
+        imageUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?q=80&w=1000&auto=format&fit=crop', 
+        link: 'category/1' 
+      },
+      { 
+        title: 'Mazzali Tandir Kabob', 
+        imageUrl: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?q=80&w=1000&auto=format&fit=crop', 
+        link: 'category/2' 
+      },
+      { 
+        title: 'Issiq Non va Somsa', 
+        imageUrl: 'https://images.unsplash.com/photo-1514326640560-7d063ef2aed5?q=80&w=1000&auto=format&fit=crop', 
+        link: 'all' 
+      }
+    ];
+    const insertBanner = db.prepare("INSERT INTO banners (title, imageUrl, link) VALUES (?, ?, ?)");
+    defaultBanners.forEach(b => insertBanner.run(b.title, b.imageUrl, b.link));
   }
 
   // Migrations for existing tables
@@ -178,23 +215,75 @@ try {
     console.log("Categories table is empty. Waiting for manual entry.");
   }
   console.log("Database initialized successfully");
+  
+  // Test write
+  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run('last_start', new Date().toISOString());
+  console.log("Database write test successful");
 } catch (error) {
-  console.error("Database initialization failed:", error);
+  console.error("Database initialization failed CRITICAL:", error);
 }
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
-
+  
+  // CORS must be first
+  app.use(cors());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Serve firm photo
+  // Request logging
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
+
+  // Health check
+  app.get("/api/health", (req, res) => {
+    console.log("Health check requested");
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // Test route
+  app.get("/api/test", (req, res) => {
+    res.json({ message: "API is working", timestamp: new Date().toISOString() });
+  });
+
+  const httpServer = createServer(app);
+  const io = new Server(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
+  const PORT = 3000;
+
+  // Socket.io logic
+  io.on("connection", (socket) => {
+    console.log("A user connected:", socket.id);
+
+    socket.on("update_location", (data) => {
+      const { userId, lat, lng, role } = data;
+      // Update DB
+      db.prepare("UPDATE users SET lat = ?, lng = ?, lastSeen = CURRENT_TIMESTAMP WHERE id = ?").run(lat, lng, userId);
+      db.prepare("INSERT INTO location_history (userId, lat, lng) VALUES (?, ?, ?)").run(userId, lat, lng);
+      
+      // Broadcast to all (especially admins)
+      io.emit("location_updated", { userId, lat, lng, role });
+    });
+
+    socket.on("new_order", (order) => {
+      io.emit("order_created", order);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("User disconnected");
+    });
+  });
+
+    // Serve firm photo
   app.get("/api/image/firm_photo", (req, res) => {
-    // In a real app we'd serve a file, but here we can redirect or serve a base64
-    // Since I don't have the file on disk, I'll use a placeholder or the one from the prompt if I can.
-    // For now, I'll use a high-quality placeholder that matches the theme.
-    res.redirect("https://picsum.photos/seed/uzbechka/800/1200");
+    // Using a high-quality thematic image that matches the brand style (Uzbek woman/culture)
+    res.redirect("https://images.unsplash.com/photo-1514326640560-7d063ef2aed5?q=80&w=1000&auto=format&fit=crop");
   });
 
   // Auth Endpoints
@@ -230,7 +319,13 @@ async function startServer() {
   app.patch("/api/users/location", (req, res) => {
     const { userId, lat, lng } = req.body;
     db.prepare("UPDATE users SET lat = ?, lng = ?, lastSeen = CURRENT_TIMESTAMP WHERE id = ?").run(lat, lng, userId);
+    db.prepare("INSERT INTO location_history (userId, lat, lng) VALUES (?, ?, ?)").run(userId, lat, lng);
     res.json({ success: true });
+  });
+
+  app.get("/api/users/:id/history", (req, res) => {
+    const history = db.prepare("SELECT lat, lng, timestamp FROM location_history WHERE userId = ? ORDER BY timestamp DESC LIMIT 100").all(req.params.id);
+    res.json(history);
   });
 
   app.delete("/api/users/:id", (req, res) => {
@@ -291,6 +386,7 @@ async function startServer() {
   });
 
   app.get("/api/products", (req, res) => {
+    console.log("GET /api/products hit");
     res.json(db.prepare(`
       SELECT p.*, c.name as categoryName 
       FROM products p 
@@ -459,23 +555,54 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // API 404 handler - catch unmatched /api routes before they hit Vite/static
+  app.all("/api/*", (req, res) => {
+    console.warn(`API Route Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ 
+      error: "API route not found", 
+      method: req.method,
+      path: req.url,
+      availableRoutes: [
+        "/api/health", "/api/test", "/api/products", "/api/categories", 
+        "/api/orders", "/api/stats", "/api/users", "/api/banners", 
+        "/api/settings", "/api/debts"
+      ]
+    });
+  });
+
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  const isProd = process.env.NODE_ENV === "production";
+  
+  if (!isProd) {
+    console.log("Starting in DEVELOPMENT mode with Vite middleware");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: false // Disable HMR as per platform guidelines
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    console.log("Starting in PRODUCTION mode");
     app.use(express.static(path.join(__dirname, "dist")));
     app.get("*", (req, res) => {
       res.sendFile(path.join(__dirname, "dist", "index.html"));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  // Global error handler - MUST be last
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Unhandled Error:", err);
+    res.status(500).json({ error: "Internal Server Error", message: err.message });
+  });
+
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});

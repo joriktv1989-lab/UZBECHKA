@@ -4,11 +4,11 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Truck, CheckCircle, LogOut, MapPin, Phone, Clock, Navigation, Package, ChevronDown, ChevronUp, Store, Users, Plus, Volume2, CreditCard, Banknote, Calendar, X, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
+import { YMaps, Map, Placemark } from '@pbe/react-yandex-maps';
 import { ConfirmDialog } from './ConfirmDialog';
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-const STORE_LOCATION = { lat: 41.311081, lng: 69.240562 };
+const YANDEX_MAPS_API_KEY = (import.meta.env.VITE_YANDEX_MAPS_API_KEY || '').trim();
+const STORE_LOCATION = [41.311081, 69.240562];
 
 export const CourierApp: React.FC = () => {
   const { orders, updateOrder, users, updateUserLocation, updateUser, speak, addDebt, products } = useData();
@@ -285,27 +285,20 @@ export const CourierApp: React.FC = () => {
                       </div>
                     </div>
                     <div className="h-60 rounded-3xl overflow-hidden border border-[#e2e5eb] relative shadow-inner flex items-center justify-center bg-stone-50">
-                      {GOOGLE_MAPS_API_KEY ? (
-                        <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-                          <Map 
-                            defaultCenter={order.latitude && order.longitude ? { lat: (STORE_LOCATION.lat + order.latitude) / 2, lng: (STORE_LOCATION.lng + order.longitude) / 2 } : STORE_LOCATION} 
-                            defaultZoom={12}
-                            className="h-full w-full"
-                          >
-                            <Marker position={STORE_LOCATION} title={t('store')} />
-                            {order.latitude && order.longitude && (
-                              <Marker position={{ lat: order.latitude, lng: order.longitude }} title={t('client')} />
-                            )}
-                          </Map>
-                        </APIProvider>
-                      ) : (
-                        <div className="text-center p-6">
-                          <Navigation size={32} className="text-uzum-muted mx-auto mb-2" />
-                          <p className="text-[10px] font-black text-uzum-muted uppercase tracking-widest">
-                            Пожалуйста, настройте Google Maps API Key
-                          </p>
-                        </div>
-                      )}
+                      <YMaps query={{ apikey: YANDEX_MAPS_API_KEY }}>
+                        <Map 
+                          defaultState={{ 
+                            center: order.latitude && order.longitude ? [(STORE_LOCATION[0] + order.latitude) / 2, (STORE_LOCATION[1] + order.longitude) / 2] : STORE_LOCATION, 
+                            zoom: 12 
+                          }} 
+                          className="h-full w-full"
+                        >
+                          <Placemark geometry={STORE_LOCATION} properties={{ hintContent: t('store') }} options={{ preset: 'islands#redCircleDotIcon' }} />
+                          {order.latitude && order.longitude && (
+                            <Placemark geometry={[order.latitude, order.longitude]} properties={{ hintContent: t('client') }} options={{ preset: 'islands#blueCircleDotIcon' }} />
+                          )}
+                        </Map>
+                      </YMaps>
                     </div>
                   </div>
                 )}

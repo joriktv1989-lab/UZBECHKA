@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Product, Category, Order, Stats, User, Banner, Debt } from '../types';
-import { apiFetch } from '../utils/api';
+import { apiFetch, API_BASE_URL } from '../utils/api';
 import { useLanguage } from './LanguageContext';
 import { useAuth } from './AuthContext';
+import { io, Socket } from 'socket.io-client';
 
 interface DataContextType {
   products: Product[];
@@ -50,69 +51,105 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth();
   const prevOrdersRef = useRef<Order[]>([]);
   const prevDebtsRef = useRef<Debt[]>([]);
+  const socketRef = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    // Initialize Socket.io
+    const socket = io(API_BASE_URL || window.location.origin);
+    socketRef.current = socket;
+
+    socket.on('location_updated', (data) => {
+      setUsers(prev => prev.map(u => u.id === data.userId ? { ...u, lat: data.lat, lng: data.lng } : u));
+    });
+
+    socket.on('order_created', () => {
+      refreshData();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   const refreshData = async () => {
     try {
-      const [pRes, cRes, oRes, sRes, uRes, bRes, stRes, dRes] = await Promise.all([
-        apiFetch('/api/products'),
-        apiFetch('/api/categories'),
-        apiFetch('/api/orders'),
-        apiFetch('/api/stats'),
-        apiFetch('/api/users'),
-        apiFetch('/api/banners'),
-        apiFetch('/api/settings'),
-        apiFetch('/api/debts')
-      ]);
-      
-      if (pRes.ok) setProducts(await pRes.json());
-      if (cRes.ok) setCategories(await cRes.json());
-      if (oRes.ok) {
-        const newOrders: Order[] = await oRes.json();
+      const endpoints = [
+        { name: 'products', url: '/api/products' },
+        { name: 'categories', url: '/api/categories' },
+        { name: 'orders', url: '/api/orders' },
+        { name: 'stats', url: '/api/stats' },
+        { name: 'users', url: '/api/users' },
+        { name: 'banners', url: '/api/banners' },
+        { name: 'settings', url: '/api/settings' },
+        { name: 'debts', url: '/api/debts' }
+      ];
+
+      const results = await Promise.all(
+        endpoints.map(async (ep) => {
+          try {
+            const res = await apiFetch(ep.url);
+            if (!res.ok) {
+              console.warn(`API Error for ${ep.name}: ${res.status} ${res.statusText}`);
+              return { name: ep.name, data: null };
+            }
+            return { name: ep.name, data: await res.json() };
+          } catch (e) {
+            console.error(`Fetch error for ${ep.name}:`, e);
+            return { name: ep.name, data: null };
+          }
+        })
+      );
+
+      results.forEach(res => {
+        if (res.data === null) return;
         
-        // Voice Notifications Logic
-        if (settings.voice_enabled === 'true' && prevOrdersRef.current.length > 0) {
-          newOrders.forEach(order => {
-            const prevOrder = prevOrdersRef.current.find(o => o.id === order.id);
-            
-            // New Order
-            if (!prevOrder && newOrders.length > prevOrdersRef.current.length) {
-              speak(t('newOrderVoice'));
+        switch (res.name) {
+          case 'products': setProducts(res.data); break;
+          case 'categories': setCategories(res.data); break;
+          case 'orders': {
+            const newOrders: Order[] = res.data;
+            if (settings.voice_enabled === 'true' && prevOrdersRef.current.length > 0) {
+              newOrders.forEach(order => {
+                const prevOrder = prevOrdersRef.current.find(o => o.id === order.id);
+                if (!prevOrder && newOrders.length > prevOrdersRef.current.length) {
+                  speak(t('newOrderVoice'));
+                }
+                if (prevOrder) {
+                  if (prevOrder.paymentStatus === 'pending' && order.paymentStatus === 'paid') {
+                    speak(t('paymentPaidVoice'));
+                  }
+                  if (prevOrder.collectionStatus === 'pending' && order.collectionStatus === 'collected') {
+                    speak(t('collectionCollectedVoice'));
+                  }
+                }
+              });
             }
-            
-            // Status Changes
-            if (prevOrder) {
-              if (prevOrder.paymentStatus === 'pending' && order.paymentStatus === 'paid') {
-                speak(t('paymentPaidVoice'));
-              }
-              if (prevOrder.collectionStatus === 'pending' && order.collectionStatus === 'collected') {
-                speak(t('collectionCollectedVoice'));
-              }
+            setOrders(newOrders);
+            prevOrdersRef.current = newOrders;
+            break;
+          }
+          case 'stats': setStats(res.data); break;
+          case 'users': setUsers(res.data); break;
+          case 'banners': setBanners(res.data); break;
+          case 'settings': setSettings(res.data); break;
+          case 'debts': {
+            const newDebts: Debt[] = res.data;
+            if (settings.voice_enabled === 'true' && prevDebtsRef.current.length > 0) {
+              newDebts.forEach(debt => {
+                const prevDebt = prevDebtsRef.current.find(d => d.id === debt.id);
+                if (prevDebt && prevDebt.status === 'pending' && debt.status === 'paid') {
+                  speak(t('debtRepaidVoice'));
+                }
+              });
             }
-          });
+            setDebts(newDebts);
+            prevDebtsRef.current = newDebts;
+            break;
+          }
         }
-        
-        setOrders(newOrders);
-        prevOrdersRef.current = newOrders;
-      }
-      if (sRes.ok) setStats(await sRes.json());
-      if (uRes.ok) setUsers(await uRes.json());
-      if (bRes.ok) setBanners(await bRes.json());
-      if (stRes.ok) setSettings(await stRes.json());
-      if (dRes.ok) {
-        const newDebts: Debt[] = await dRes.json();
-        if (settings.voice_enabled === 'true' && prevDebtsRef.current.length > 0) {
-          newDebts.forEach(debt => {
-            const prevDebt = prevDebtsRef.current.find(d => d.id === debt.id);
-            if (prevDebt && prevDebt.status === 'pending' && debt.status === 'paid') {
-              speak(t('debtRepaidVoice'));
-            }
-          });
-        }
-        setDebts(newDebts);
-        prevDebtsRef.current = newDebts;
-      }
+      });
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      console.error('Critical error refreshing data:', error);
     }
   };
 
@@ -124,9 +161,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    refreshData();
+    // Small delay to ensure server is ready
+    const timer = setTimeout(() => {
+      refreshData();
+    }, 1500);
+    
     const interval = setInterval(refreshData, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [language, settings.voice_enabled]);
 
   const addProduct = async (product: Partial<Product>) => {
@@ -167,11 +211,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const createOrder = async (order: any) => {
-    await apiFetch('/api/orders', {
+    const res = await apiFetch('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(order),
     });
+    if (res.ok && socketRef.current) {
+      const newOrder = await res.json();
+      socketRef.current.emit('new_order', newOrder);
+    }
     await refreshData();
   };
 
@@ -254,13 +302,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUserLocation = async (lat: number, lng: number) => {
-    if (!user) return;
-    await apiFetch('/api/users/location', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id, lat, lng }),
+    if (!user || !socketRef.current) return;
+    
+    // Send via socket for real-time
+    socketRef.current.emit('update_location', {
+      userId: user.id,
+      lat,
+      lng,
+      role: user.role
     });
-    // Don't refresh data here to avoid infinite loops, we just send location
+
+    // Also update local state for immediate feedback
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, lat, lng } : u));
   };
 
   return (

@@ -1,5 +1,5 @@
 {
-  "name": "Uzbechka Delivery Original",
+  "name": "non",
   "description": "Premium oriental delivery system for food and goods with role-based access for Admins, Agents, Couriers, and Clients.",
   "requestFramePermissions": [
     "geolocation"
