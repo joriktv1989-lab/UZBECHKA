@@ -161,9 +161,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    refreshData();
+    // Small delay to ensure server is ready
+    const timer = setTimeout(() => {
+      refreshData();
+    }, 1500);
+    
     const interval = setInterval(refreshData, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [language, settings.voice_enabled]);
 
   const addProduct = async (product: Partial<Product>) => {

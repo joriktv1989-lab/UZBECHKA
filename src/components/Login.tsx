@@ -53,7 +53,8 @@ export const Login: React.FC = () => {
           <div className="w-20 h-20 bg-uzum-primary rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-uzum-primary/20 rotate-3">
             <ShoppingBag className="text-white w-10 h-10" />
           </div>
-          <h1 className="text-4xl font-black text-uzum-primary tracking-tighter mb-2">UZBECHKA</h1>
+          <h1 className="text-4xl font-black text-uzum-primary tracking-tighter mb-1">UZBECHKA</h1>
+          <p className="text-uzum-muted text-[10px] font-bold uppercase tracking-[0.2em] mb-2">DENAN bekary</p>
           <p className="text-uzum-muted text-sm font-medium">{t('premiumDelivery')}</p>
         </div>
 
