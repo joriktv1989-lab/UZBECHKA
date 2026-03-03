@@ -9,15 +9,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
-    // Play welcome sound
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    audio.volume = 0.5;
-    audio.play().catch(e => console.log("Audio autoplay blocked:", e));
-
     const timer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(onFinish, 800); // Wait for exit animation
-    }, 2500);
+      setTimeout(onFinish, 1000); // Wait for exit animation
+    }, 3000);
     return () => clearTimeout(timer);
   }, [onFinish]);
 
@@ -44,20 +39,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
                 (e.target as HTMLImageElement).src = "https://picsum.photos/seed/bakery/800/1200";
               }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-10 text-white text-center">
-              <motion.p
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="text-sm italic font-serif mb-1 opacity-80"
-              >
-                Вкус традиций с
-              </motion.p>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex flex-col justify-end p-10 text-white">
               <motion.h1 
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5 }}
-                className="text-5xl font-black mb-1 tracking-tighter"
+                className="text-4xl font-black mb-2"
               >
                 UZBECHKA
               </motion.h1>
@@ -65,7 +52,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.7 }}
-                className="text-sm font-bold tracking-[0.2em] uppercase opacity-90"
+                className="text-lg font-medium opacity-90"
               >
                 DENAN bekary
               </motion.p>

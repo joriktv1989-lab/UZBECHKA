@@ -157,11 +157,7 @@ export const ClientApp: React.FC = () => {
 
       <main className="p-4 space-y-6">
         {activeTab === 'menu' && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            className="space-y-6"
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             {/* Banners Carousel */}
             {banners.filter(b => b.isActive).length > 0 && (
               <div className="relative h-44 rounded-2xl overflow-hidden shadow-sm group">
@@ -250,11 +246,7 @@ export const ClientApp: React.FC = () => {
         )}
 
         {activeTab === 'orders' && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            className="space-y-4"
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
             <h2 className="text-xl font-bold">{t('myOrders')}</h2>
             {myOrders.length === 0 ? (
               <div className="text-center py-20 text-uzum-muted">

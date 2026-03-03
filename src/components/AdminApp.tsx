@@ -12,8 +12,6 @@ import { YMaps, Map, Placemark, Polyline } from '@pbe/react-yandex-maps';
 import { AdminAI } from './AdminAI';
 import { ConfirmDialog } from './ConfirmDialog';
 
-import { apiFetch } from '../utils/api';
-
 const YANDEX_MAPS_API_KEY = (import.meta.env.VITE_YANDEX_MAPS_API_KEY || '').trim();
 
 export const AdminApp: React.FC = () => {
@@ -37,7 +35,7 @@ export const AdminApp: React.FC = () => {
 
   const fetchUserTrack = async (userId: number) => {
     try {
-      const response = await apiFetch(`/api/users/${userId}/history`);
+      const response = await fetch(`/api/users/${userId}/history`);
       const data = await response.json();
       // Yandex Maps expects [lat, lng]
       setUserTrack(data.map((h: any) => [h.lat, h.lng]));
@@ -1417,7 +1415,7 @@ export const AdminApp: React.FC = () => {
                   if (editingUser) {
                     await updateUser(editingUser.id, data);
                   } else {
-                    await apiFetch('/api/auth/register', {
+                    await fetch('/api/auth/register', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(data),

@@ -4,6 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.uzbechka.delivery',
   appName: 'Uzbechka',
   webDir: 'dist',
+  bundledWebRuntime: false,
   server: {
     // This allows the app to connect to the hosted API
     cleartext: true,
