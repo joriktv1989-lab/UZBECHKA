@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
+import { GoogleGenAI } from "@google/genai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,7 @@ const dbPath = isElectron
   : "uzbechka.db";
 
 const db = new Database(dbPath);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 try {
   // Initialize database
@@ -37,7 +39,8 @@ try {
 
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL
+      name TEXT NOT NULL,
+      commissionPercent REAL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS products (
@@ -75,6 +78,7 @@ try {
       location TEXT,
       latitude REAL,
       longitude REAL,
+      deliveryPhoto TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES users(id),
       FOREIGN KEY (agentId) REFERENCES users(id),
@@ -87,6 +91,7 @@ try {
       productId INTEGER NOT NULL,
       quantity INTEGER NOT NULL,
       price REAL NOT NULL,
+      commissionAmount REAL DEFAULT 0,
       FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE,
       FOREIGN KEY (productId) REFERENCES products(id)
     );
@@ -94,6 +99,13 @@ try {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS telegram_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message TEXT,
+      status TEXT,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS debts (
@@ -116,7 +128,106 @@ try {
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (userId) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS salaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      type TEXT NOT NULL, -- 'fixed' or 'commission'
+      period TEXT NOT NULL, -- '2024-03'
+      status TEXT NOT NULL DEFAULT 'pending',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      amount REAL NOT NULL,
+      category TEXT NOT NULL,
+      date DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS income (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      amount REAL NOT NULL,
+      category TEXT NOT NULL,
+      date DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS ai_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent TEXT NOT NULL, -- 'jarvis' or 'uzbechka'
+      type TEXT NOT NULL, -- 'performance', 'security', 'operations', 'optimization'
+      content TEXT NOT NULL,
+      status TEXT DEFAULT 'unread',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS system_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      level TEXT NOT NULL, -- 'info', 'warn', 'error'
+      module TEXT NOT NULL,
+      message TEXT NOT NULL,
+      details TEXT,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS employee_kpi (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      score REAL DEFAULT 0,
+      level TEXT DEFAULT 'bronze', -- 'bronze', 'silver', 'gold', 'platinum'
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS profit_forecast (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      expectedOrders INTEGER,
+      expectedRevenue REAL,
+      confidence REAL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS system_health_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      service TEXT NOT NULL,
+      issue TEXT,
+      severity TEXT, -- 'low', 'medium', 'high', 'critical'
+      autoFixApplied INTEGER DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS security_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER,
+      type TEXT NOT NULL,
+      riskScore REAL,
+      details TEXT,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_commissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agentId INTEGER NOT NULL UNIQUE,
+      percent REAL DEFAULT 10,
+      fixedSalary REAL DEFAULT 0,
+      workingDays INTEGER DEFAULT 26,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (agentId) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
+
+  // Ensure unique index for agent_commissions if not already present
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_commissions_agentId ON agent_commissions(agentId)");
+  } catch (e) {
+    console.warn("Could not create unique index on agent_commissions (might already exist or have duplicates):", e);
+  }
 
   // Seed default settings
   const settingsCount = db.prepare("SELECT COUNT(*) as count FROM settings").get() as { count: number };
@@ -126,10 +237,13 @@ try {
       { key: 'delivery_fee', value: '10000' },
       { key: 'min_order', value: '30000' },
       { key: 'contact_phone', value: '+998936584455' },
-      { key: 'address', value: 'Tashkent, Uzbekistan' },
+      { key: 'address', value: 'Bukhara, Uzbekistan' },
       { key: 'voice_enabled', value: 'true' },
       { key: 'click_card', value: '8600 0000 0000 0000' },
-      { key: 'payme_card', value: '9860 0000 0000 0000' }
+      { key: 'payme_card', value: '9860 0000 0000 0000' },
+      { key: 'jarvis_name', value: 'Jarvis' },
+      { key: 'warehouse_lat', value: '39.7747' },
+      { key: 'warehouse_lng', value: '64.4286' }
     ];
     const insertSetting = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
     defaultSettings.forEach(s => insertSetting.run(s.key, s.value));
@@ -177,6 +291,15 @@ try {
   } catch (e) {}
   try {
     db.prepare("ALTER TABLE orders ADD COLUMN collectionStatus TEXT DEFAULT 'pending'").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE orders ADD COLUMN deliveryPhoto TEXT").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE categories ADD COLUMN commissionPercent REAL DEFAULT 0").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE order_items ADD COLUMN commissionAmount REAL DEFAULT 0").run();
   } catch (e) {}
   try {
     db.prepare("ALTER TABLE users ADD COLUMN carType TEXT").run();
@@ -330,25 +453,44 @@ async function startServer() {
 
   app.delete("/api/users/:id", (req, res) => {
     try {
-      // First delete related order items and orders to avoid FK constraints
-      // In a real app we might want to keep history, but user asked for "delete"
+      // First delete related records to avoid FK constraints
+      db.prepare("DELETE FROM debts WHERE clientId = ?").run(req.params.id);
+      db.prepare("DELETE FROM salaries WHERE userId = ?").run(req.params.id);
+      db.prepare("DELETE FROM location_history WHERE userId = ?").run(req.params.id);
+      db.prepare("DELETE FROM employee_kpi WHERE userId = ?").run(req.params.id);
+      db.prepare("DELETE FROM agent_commissions WHERE agentId = ?").run(req.params.id);
+      
       const orders = db.prepare("SELECT id FROM orders WHERE clientId = ? OR agentId = ? OR courierId = ?").all(req.params.id, req.params.id, req.params.id);
       for (const order of orders as any) {
         db.prepare("DELETE FROM order_items WHERE orderId = ?").run(order.id);
         db.prepare("DELETE FROM orders WHERE id = ?").run(order.id);
       }
+      
       db.prepare("DELETE FROM users WHERE id = ?").run(req.params.id);
       res.json({ success: true });
     } catch (e) {
+      console.error("Delete user error:", e);
       res.status(500).json({ error: "Failed to delete user" });
     }
   });
 
   app.put("/api/users/:id", (req, res) => {
-    const { name, phone, password, role, carType, carPhoto, photo } = req.body;
+    const { name, phone, password, role, carType, carPhoto, photo, commissionPercent, fixedSalary } = req.body;
     db.prepare("UPDATE users SET name = ?, phone = ?, password = ?, role = ?, carType = ?, carPhoto = ?, photo = ? WHERE id = ?").run(
       name, phone, password, role, carType || null, carPhoto || null, photo || null, req.params.id
     );
+
+    if (commissionPercent !== undefined || fixedSalary !== undefined) {
+      db.prepare(`
+        INSERT INTO agent_commissions (agentId, percent, fixedSalary)
+        VALUES (?, ?, ?)
+        ON CONFLICT(agentId) DO UPDATE SET
+          percent = COALESCE(excluded.percent, percent),
+          fixedSalary = COALESCE(excluded.fixedSalary, fixedSalary),
+          updatedAt = CURRENT_TIMESTAMP
+      `).run(req.params.id, commissionPercent || 10, fixedSalary || 0);
+    }
+
     res.json({ success: true });
   });
 
@@ -367,7 +509,30 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // Banners
+  // Telegram Integration
+  const sendTelegramMessage = async (message: string) => {
+    try {
+      const botToken = db.prepare("SELECT value FROM settings WHERE key = 'telegram_bot_token'").get() as any;
+      const chatId = db.prepare("SELECT value FROM settings WHERE key = 'telegram_channel_id'").get() as any;
+
+      if (botToken?.value && chatId?.value) {
+        const url = `https://api.telegram.org/bot${botToken.value}/sendMessage`;
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId.value,
+            text: message,
+            parse_mode: 'HTML'
+          })
+        });
+        db.prepare("INSERT INTO telegram_logs (message, status) VALUES (?, ?)").run(message, 'sent');
+      }
+    } catch (error) {
+      console.error("Telegram Error:", error);
+      db.prepare("INSERT INTO telegram_logs (message, status) VALUES (?, ?)").run(message, 'failed');
+    }
+  };
   app.get("/api/banners", (req, res) => {
     res.json(db.prepare("SELECT * FROM banners WHERE isActive = 1").all());
   });
@@ -449,12 +614,13 @@ async function startServer() {
     const insertItem = db.prepare("INSERT INTO order_items (orderId, productId, quantity, price) VALUES (?, ?, ?, ?)");
     for (const item of items) {
       const productId = item.id || item.productId;
-      if (!productId) {
-        console.error("Missing productId for item:", item);
-        continue;
-      }
+      if (!productId) continue;
       insertItem.run(orderId, productId, item.quantity, item.price);
     }
+
+    // Telegram Notification
+    const client = db.prepare("SELECT name FROM users WHERE id = ?").get(clientId) as any;
+    sendTelegramMessage(`🚀 <b>Новый заказ #${orderId}</b>\n👤 Клиент: ${client?.name}\n💰 Сумма: ${totalPrice.toLocaleString()} UZS\n📍 Локация: ${location}`);
     
     res.json({ id: orderId });
   });
@@ -471,6 +637,12 @@ async function startServer() {
     const values = updates.map(([, value]) => value);
     
     db.prepare(`UPDATE orders SET ${fields} WHERE id = ?`).run(...values, req.params.id);
+
+    // Telegram Notification for status changes
+    if (req.body.orderStatus) {
+      sendTelegramMessage(`📦 <b>Заказ #${req.params.id}</b>\n🔄 Статус изменен на: <b>${req.body.orderStatus}</b>`);
+    }
+
     res.json({ success: true });
   });
 
@@ -550,9 +722,281 @@ async function startServer() {
   });
 
   app.patch("/api/debts/:id", (req, res) => {
-    const { status } = req.body;
-    db.prepare("UPDATE debts SET status = ? WHERE id = ?").run(status, req.params.id);
+    const { status, amount } = req.body;
+    if (status) {
+      db.prepare("UPDATE debts SET status = ? WHERE id = ?").run(status, req.params.id);
+    }
+    if (amount !== undefined) {
+      db.prepare("UPDATE debts SET amount = ? WHERE id = ?").run(amount, req.params.id);
+    }
     res.json({ success: true });
+  });
+
+  // AI Jarvis Endpoint (System Architect)
+  app.post("/api/ai/jarvis", async (req, res) => {
+    const { prompt, context } = req.body;
+    try {
+      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const model = "gemini-3.1-pro-preview";
+      
+      const systemInstruction = `You are Jarvis, the System Architect AI for "UZBECHKA AI SUPER DELIVERY". 
+      Your role is to monitor system health, analyze logs, detect bugs, and suggest architecture improvements.
+      You communicate with "Uzbechka AI" (Operations AI) to optimize the business.
+      Current system context: ${JSON.stringify(context || {})}.
+      Provide technical insights, performance optimizations, and security recommendations.`;
+
+      const response = await genAI.models.generateContent({
+        model,
+        contents: prompt,
+        config: { systemInstruction }
+      });
+
+      // Log AI action
+      db.prepare("INSERT INTO system_logs (level, module, message) VALUES (?, ?, ?)").run('info', 'AI_JARVIS', `Jarvis processed prompt: ${prompt.substring(0, 50)}...`);
+
+      res.json({ text: response.text });
+    } catch (error) {
+      console.error("Jarvis AI Error:", error);
+      res.status(500).json({ error: "Jarvis is currently offline" });
+    }
+  });
+
+  // AI Uzbechka Endpoint (Operations AI)
+  app.post("/api/ai/uzbechka", async (req, res) => {
+    const { prompt, context } = req.body;
+    try {
+      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const model = "gemini-3.1-pro-preview";
+      
+      const systemInstruction = `You are Uzbechka AI, the Operations and Delivery AI for "UZBECHKA AI SUPER DELIVERY". 
+      Your role is to optimize delivery routes, predict demand, assist couriers, and handle customer support.
+      You speak Uzbek, Russian, and English.
+      You communicate with "Jarvis AI" (System AI) to ensure the platform runs smoothly.
+      Current operational context: ${JSON.stringify(context || {})}.
+      Focus on delivery efficiency, courier satisfaction, and customer experience.`;
+
+      const response = await genAI.models.generateContent({
+        model,
+        contents: prompt,
+        config: { systemInstruction }
+      });
+
+      // Log AI action
+      db.prepare("INSERT INTO system_logs (level, module, message) VALUES (?, ?, ?)").run('info', 'AI_UZBECHKA', `Uzbechka processed prompt: ${prompt.substring(0, 50)}...`);
+
+      res.json({ text: response.text });
+    } catch (error) {
+      console.error("Uzbechka AI Error:", error);
+      res.status(500).json({ error: "Uzbechka is currently offline" });
+    }
+  });
+
+  // AI-to-AI Communication Simulation
+  app.post("/api/ai/sync", async (req, res) => {
+    try {
+      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const model = "gemini-3-flash-preview";
+
+      // Jarvis analyzes system health
+      const jarvisAnalysis = await genAI.models.generateContent({
+        model,
+        contents: "Analyze the current system state and provide a technical report for Uzbechka AI.",
+        config: { systemInstruction: "You are Jarvis AI. Analyze technical logs and performance." }
+      });
+
+      // Uzbechka responds with operational context
+      const uzbechkaResponse = await genAI.models.generateContent({
+        model,
+        contents: `Jarvis says: ${jarvisAnalysis.text}. How does this affect our delivery operations?`,
+        config: { systemInstruction: "You are Uzbechka AI. Analyze operational impact of technical issues." }
+      });
+
+      // Save reports
+      db.prepare("INSERT INTO ai_reports (agent, type, content) VALUES (?, ?, ?)").run('jarvis', 'performance', jarvisAnalysis.text);
+      db.prepare("INSERT INTO ai_reports (agent, type, content) VALUES (?, ?, ?)").run('uzbechka', 'operations', uzbechkaResponse.text);
+
+      res.json({ 
+        jarvis: jarvisAnalysis.text,
+        uzbechka: uzbechkaResponse.text
+      });
+    } catch (error) {
+      console.error("AI Sync Error:", error);
+      res.status(500).json({ error: "AI Communication failed" });
+    }
+  });
+
+  app.get("/api/ai/reports", (req, res) => {
+    const reports = db.prepare("SELECT * FROM ai_reports ORDER BY createdAt DESC LIMIT 50").all();
+    res.json(reports);
+  });
+
+  app.get("/api/system/logs", (req, res) => {
+    const logs = db.prepare("SELECT * FROM system_logs ORDER BY createdAt DESC LIMIT 100").all();
+    res.json(logs);
+  });
+
+  // Financial Reporting
+  app.get("/api/finance/report", (req, res) => {
+    const { startDate, endDate } = req.query;
+    const dateFilter = startDate && endDate ? `WHERE date BETWEEN '${startDate}' AND '${endDate}'` : "";
+    
+    const income = db.prepare(`SELECT SUM(amount) as total FROM income ${dateFilter}`).get() as any;
+    const expenses = db.prepare(`SELECT SUM(amount) as total FROM expenses ${dateFilter}`).get() as any;
+    const orderIncome = db.prepare(`SELECT SUM(totalPrice) as total FROM orders WHERE paymentStatus = 'paid' ${startDate && endDate ? `AND createdAt BETWEEN '${startDate}' AND '${endDate}'` : ""}`).get() as any;
+    
+    const categoryExpenses = db.prepare(`SELECT category, SUM(amount) as total FROM expenses ${dateFilter} GROUP BY category`).all();
+    const categoryIncome = db.prepare(`SELECT category, SUM(amount) as total FROM income ${dateFilter} GROUP BY category`).all();
+
+    res.json({
+      totalIncome: (income.total || 0) + (orderIncome.total || 0),
+      totalExpenses: expenses.total || 0,
+      profit: ((income.total || 0) + (orderIncome.total || 0)) - (expenses.total || 0),
+      categoryExpenses,
+      categoryIncome
+    });
+  });
+
+  app.post("/api/finance/expenses", (req, res) => {
+    const { title, amount, category } = req.body;
+    db.prepare("INSERT INTO expenses (title, amount, category) VALUES (?, ?, ?)").run(title, amount, category);
+    res.json({ success: true });
+  });
+
+  app.post("/api/finance/income", (req, res) => {
+    const { title, amount, category } = req.body;
+    db.prepare("INSERT INTO income (title, amount, category) VALUES (?, ?, ?)").run(title, amount, category);
+    res.json({ success: true });
+  });
+
+  // Salaries
+  app.get("/api/salaries", (req, res) => {
+    const salaries = db.prepare(`
+      SELECT s.*, u.name as userName, u.role as userRole
+      FROM salaries s
+      JOIN users u ON s.userId = u.id
+    `).all();
+    res.json(salaries);
+  });
+
+  app.post("/api/salaries", (req, res) => {
+    const { userId, amount, type, period } = req.body;
+    db.prepare("INSERT INTO salaries (userId, amount, type, period) VALUES (?, ?, ?, ?)").run(userId, amount, type, period);
+    res.json({ success: true });
+  });
+
+  app.get("/api/admin/kpi", (req, res) => {
+    const kpis = db.prepare(`
+      SELECT k.*, u.name as userName, u.photo as userPhoto
+      FROM employee_kpi k
+      JOIN users u ON k.userId = u.id
+      ORDER BY k.score DESC
+    `).all();
+    res.json(kpis);
+  });
+
+  app.get("/api/admin/forecast", (req, res) => {
+    const forecast = db.prepare("SELECT * FROM profit_forecast ORDER BY date ASC").all();
+    res.json(forecast);
+  });
+
+  app.get("/api/admin/health", (req, res) => {
+    const health = db.prepare("SELECT * FROM system_health_logs ORDER BY createdAt DESC LIMIT 50").all();
+    res.json(health);
+  });
+
+  app.get("/api/admin/security", (req, res) => {
+    const alerts = db.prepare(`
+      SELECT s.*, u.name as userName
+      FROM security_alerts s
+      LEFT JOIN users u ON s.userId = u.id
+      ORDER BY s.createdAt DESC LIMIT 50
+    `).all();
+    res.json(alerts);
+  });
+
+  app.get("/api/admin/commissions", (req, res) => {
+    const commissions = db.prepare("SELECT * FROM agent_commissions").all();
+    res.json(commissions);
+  });
+
+  app.post("/api/admin/commissions", (req, res) => {
+    const { agentId, percent, fixedSalary, workingDays } = req.body;
+    db.prepare(`
+      INSERT INTO agent_commissions (agentId, percent, fixedSalary, workingDays)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(agentId) DO UPDATE SET
+        percent = excluded.percent,
+        fixedSalary = excluded.fixedSalary,
+        workingDays = excluded.workingDays,
+        updatedAt = CURRENT_TIMESTAMP
+    `).run(agentId, percent, fixedSalary, workingDays);
+    res.json({ success: true });
+  });
+
+  app.get("/api/admin/salaries/report", (req, res) => {
+    const agents = db.prepare("SELECT id, name, role FROM users WHERE role IN ('agent', 'courier')").all();
+    const report = agents.map((user: any) => {
+      let totalSales = 0;
+      if (user.role === 'agent') {
+        const sales = db.prepare("SELECT SUM(totalPrice) as total FROM orders WHERE agentId = ? AND paymentStatus = 'paid'").get(user.id) as any;
+        totalSales = sales.total || 0;
+      } else if (user.role === 'courier') {
+        const deliveries = db.prepare("SELECT SUM(totalPrice) as total FROM orders WHERE courierId = ? AND orderStatus = 'delivered'").get(user.id) as any;
+        totalSales = deliveries.total || 0;
+      }
+      
+      const commission = db.prepare("SELECT * FROM agent_commissions WHERE agentId = ?").get(user.id) as any;
+      
+      const percent = commission?.percent || 10;
+      const fixed = commission?.fixedSalary || 0;
+      const salary = fixed + (totalSales * percent / 100);
+      
+      return {
+        userId: user.id,
+        userName: user.name,
+        role: user.role,
+        totalSales,
+        percent,
+        fixedSalary: fixed,
+        salary
+      };
+    });
+    res.json(report);
+  });
+
+  app.post("/api/admin/ai/director", async (req, res) => {
+    try {
+      const stats = db.prepare("SELECT SUM(totalPrice) as revenue, COUNT(*) as orders FROM orders WHERE paymentStatus = 'paid'").get() as any;
+      const topProducts = db.prepare(`
+        SELECT p.name, SUM(oi.quantity) as count
+        FROM order_items oi
+        JOIN products p ON oi.productId = p.id
+        GROUP BY p.id ORDER BY count DESC LIMIT 5
+      `).all();
+
+      const context = {
+        revenue: stats.revenue,
+        orders: stats.orders,
+        topProducts
+      };
+
+      const prompt = `You are the AI Business Director for "UZBECHKA AI SUPER DELIVERY". 
+      Analyze the business data and provide 3 strategic recommendations for growth.
+      Data: ${JSON.stringify(context)}.
+      Format: JSON array of objects { title, recommendation, risk_level }.
+      risk_level must be one of: low, medium, high.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+
+      res.json(JSON.parse(response.text || "[]"));
+    } catch (error) {
+      console.error("AI Director Error:", error);
+      res.status(500).json({ error: "AI Director is busy" });
+    }
   });
 
   // API 404 handler - catch unmatched /api routes before they hit Vite/static

@@ -1,21 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { useLanguage } from '../context/LanguageContext';
-import { Sparkles, Send, Bot, User, Loader2, AlertCircle, Volume2 } from 'lucide-react';
+import { Sparkles, Send, Bot, User, Loader2, AlertCircle, Volume2, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AdminAIProps {
   stats: any;
-  recentOrders: any[];
+  orders: any[];
   products: any[];
   users: any[];
 }
 
-export const AdminAI: React.FC<AdminAIProps> = ({ stats, recentOrders, products, users }) => {
+export const AdminAI: React.FC<AdminAIProps> = ({ stats, orders, products, users }) => {
   const { t } = useLanguage();
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
+  const [isListening, setIsListening] = useState(false);
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognition = useRef<any>(null);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition;
+      recognition.current = new SpeechRecognition();
+      recognition.current.continuous = false;
+      recognition.current.interimResults = false;
+      recognition.current.lang = 'ru-RU';
+
+      recognition.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setPrompt(transcript);
+        setIsListening(false);
+      };
+
+      recognition.current.onerror = () => setIsListening(false);
+      recognition.current.onend = () => setIsListening(false);
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognition.current?.stop();
+    } else {
+      setIsListening(true);
+      recognition.current?.start();
+    }
+  };
 
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +72,7 @@ export const AdminAI: React.FC<AdminAIProps> = ({ stats, recentOrders, products,
         - Total Orders: ${stats.orders}
         - Total Users: ${stats.users}
         - Products Count: ${products.length}
-        - Recent Orders: ${JSON.stringify(recentOrders.slice(0, 5).map(o => ({ id: o.id, status: o.orderStatus, total: o.totalPrice })))}
+        - Recent Orders: ${JSON.stringify(orders.slice(0, 5).map(o => ({ id: o.id, status: o.orderStatus, total: o.totalPrice })))}
         - Categories: ${JSON.stringify(stats.salesByCategory)}
         
         You are an AI Assistant for the "Uzbechka" food delivery app admin panel. 
@@ -59,25 +96,41 @@ export const AdminAI: React.FC<AdminAIProps> = ({ stats, recentOrders, products,
     }
   };
 
-  const speak = (text: string) => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    // Detect language or use current
-    utterance.lang = text.match(/[а-яА-Я]/) ? 'ru-RU' : 'uz-UZ';
-    window.speechSynthesis.speak(utterance);
+  const speak = async (text: string) => {
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Say in ${text.match(/[а-яА-Я]/) ? 'Russian' : 'Uzbek'}: ${text}` }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
+        audio.play();
+      } else {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = text.match(/[а-яА-Я]/) ? 'ru-RU' : 'uz-UZ';
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (error) {
+      console.error("TTS Error:", error);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = text.match(/[а-яА-Я]/) ? 'ru-RU' : 'uz-UZ';
+      window.speechSynthesis.speak(utterance);
+    }
   };
 
   return (
-    <div className="flex flex-col h-[600px] bg-white rounded-[2.5rem] shadow-sm border border-stone-100 overflow-hidden">
-      <div className="p-6 border-b border-stone-100 bg-stone-50/50 flex items-center gap-3">
-        <div className="p-2 bg-gold/10 text-gold rounded-xl">
-          <Sparkles size={24} />
-        </div>
-        <div>
-          <h3 className="font-bold text-stone-800">{t('aiAssistant')}</h3>
-          <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Powered by Gemini AI</p>
-        </div>
-      </div>
-
+    <div className="flex flex-col h-full bg-white overflow-hidden">
       <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-stone-50/20">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4">
@@ -139,6 +192,7 @@ export const AdminAI: React.FC<AdminAIProps> = ({ stats, recentOrders, products,
             </motion.div>
           ))}
         </AnimatePresence>
+        <div ref={messagesEndRef} />
 
         {loading && (
           <div className="flex justify-start">
@@ -151,21 +205,30 @@ export const AdminAI: React.FC<AdminAIProps> = ({ stats, recentOrders, products,
       </div>
 
       <form onSubmit={handleAsk} className="p-4 bg-white border-t border-stone-100">
-        <div className="relative">
-          <input
-            type="text"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={t('askAI')}
-            className="w-full p-4 pr-14 rounded-2xl bg-stone-50 border-none outline-none focus:ring-2 focus:ring-gold/20 transition-all font-medium text-sm"
-          />
+        <div className="relative flex gap-2">
           <button
-            type="submit"
-            disabled={!prompt.trim() || loading}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-gold text-white rounded-xl shadow-lg shadow-gold/20 disabled:opacity-50 transition-all"
+            type="button"
+            onClick={toggleListening}
+            className={`p-4 rounded-2xl transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-stone-50 text-stone-400 hover:bg-stone-100'}`}
           >
-            <Send size={20} />
+            <Mic size={20} />
           </button>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder={t('askAI')}
+              className="w-full p-4 pr-14 rounded-2xl bg-stone-50 border-none outline-none focus:ring-2 focus:ring-gold/20 transition-all font-medium text-sm"
+            />
+            <button
+              type="submit"
+              disabled={!prompt.trim() || loading}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-gold text-white rounded-xl shadow-lg shadow-gold/20 disabled:opacity-50 transition-all"
+            >
+              <Send size={20} />
+            </button>
+          </div>
         </div>
       </form>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -11,6 +11,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 import { YMaps, Map, Placemark, Polyline } from '@pbe/react-yandex-maps';
 import { AdminAI } from './AdminAI';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Map3D } from './Map3D';
 
 import { apiFetch } from '../utils/api';
 
@@ -22,10 +23,11 @@ export const AdminApp: React.FC = () => {
   const { register } = useAuth();
   const { refreshData } = useData();
   const { t, language, setLanguage } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'banners' | 'ai' | 'settings' | 'debts' | 'tracker'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'users' | 'banners' | 'ai' | 'settings' | 'debts' | 'tracker' | 'finance' | 'logs' | 'salaries' | 'kpi' | 'security'>('dashboard');
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
   const [showAddBanner, setShowAddBanner] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -34,6 +36,95 @@ export const AdminApp: React.FC = () => {
   const [userPhotoPreview, setUserPhotoPreview] = useState<string | null>(null);
   const [selectedUserForTrack, setSelectedUserForTrack] = useState<number | null>(null);
   const [userTrack, setUserTrack] = useState<[number, number][]>([]);
+  const [financeReport, setFinanceReport] = useState<any>(null);
+  const [salaries, setSalaries] = useState<any[]>([]);
+  const [salaryReport, setSalaryReport] = useState<any[]>([]);
+  const [kpis, setKpis] = useState<any[]>([]);
+  const [securityAlerts, setSecurityAlerts] = useState<any[]>([]);
+  const [aiDirectorInsights, setAiDirectorInsights] = useState<any[]>([]);
+  const [commissions, setCommissions] = useState<any[]>([]);
+
+  const [aiReports, setAiReports] = useState<any[]>([]);
+  const [systemLogs, setSystemLogs] = useState<any[]>([]);
+
+  const fetchAiData = async () => {
+    try {
+      const reportsRes = await apiFetch('/api/ai/reports');
+      setAiReports(await reportsRes.json());
+      
+      const logsRes = await apiFetch('/api/system/logs');
+      setSystemLogs(await logsRes.json());
+    } catch (e) {
+      console.error('Error fetching AI/Logs data:', e);
+    }
+  };
+
+  const fetchFinanceData = async () => {
+    try {
+      const reportRes = await apiFetch('/api/finance/report');
+      const reportData = await reportRes.json();
+      setFinanceReport(reportData);
+
+      const salariesRes = await apiFetch('/api/salaries');
+      const salariesData = await salariesRes.json();
+      setSalaries(salariesData);
+
+      const salaryReportRes = await apiFetch('/api/admin/salaries/report');
+      const salaryReportData = await salaryReportRes.json();
+      setSalaryReport(salaryReportData);
+      
+      const commissionsRes = await apiFetch('/api/admin/commissions');
+      const commissionsData = await commissionsRes.json();
+      setCommissions(commissionsData);
+    } catch (e) {
+      console.error('Error fetching finance data:', e);
+    }
+  };
+
+  const fetchKpiData = async () => {
+    try {
+      const res = await apiFetch('/api/admin/kpi');
+      setKpis(await res.json());
+    } catch (e) {
+      console.error('Error fetching KPI data:', e);
+    }
+  };
+
+  const fetchSecurityData = async () => {
+    try {
+      const res = await apiFetch('/api/admin/security');
+      setSecurityAlerts(await res.json());
+    } catch (e) {
+      console.error('Error fetching security data:', e);
+    }
+  };
+
+  const fetchAiDirectorInsights = async () => {
+    try {
+      const res = await apiFetch('/api/admin/ai/director', { method: 'POST' });
+      setAiDirectorInsights(await res.json());
+    } catch (e) {
+      console.error('Error fetching AI Director insights:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai' || activeTab === 'logs') {
+      fetchAiData();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'finance' || activeTab === 'salaries') {
+      fetchFinanceData();
+    }
+    if (activeTab === 'kpi') {
+      fetchKpiData();
+    }
+    if (activeTab === 'security') {
+      fetchSecurityData();
+    }
+  }, [activeTab]);
 
   const fetchUserTrack = async (userId: number) => {
     try {
@@ -236,6 +327,80 @@ export const AdminApp: React.FC = () => {
               </div>
             </div>
 
+            {/* AI Director Section */}
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-stone-100">
+              <div className="flex justify-between items-center mb-6">
+                <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest">{t('aiDirector')}</h4>
+                <button 
+                  onClick={fetchAiDirectorInsights}
+                  className="p-2 bg-gold/10 text-gold rounded-xl hover:bg-gold/20 transition-all"
+                >
+                  <Sparkles size={16} />
+                </button>
+              </div>
+              <div className="space-y-4">
+                {aiDirectorInsights.length > 0 ? aiDirectorInsights.map((insight, idx) => (
+                  <div key={idx} className="p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                    <div className="flex justify-between items-start mb-2">
+                      <h5 className="text-xs font-bold text-stone-800">{insight.title}</h5>
+                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                        insight.risk_level === 'high' ? 'bg-red-100 text-red-600' : 
+                        insight.risk_level === 'medium' ? 'bg-orange-100 text-orange-600' : 
+                        'bg-green-100 text-green-600'
+                      }`}>
+                        {insight.risk_level}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-stone-500 leading-relaxed">{insight.recommendation}</p>
+                  </div>
+                )) : (
+                  <div className="text-center py-8">
+                    <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Нажмите на искру для анализа</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Top Stats Section */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-100">
+                <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-3">{t('topAgent')}</h4>
+                {users.filter(u => u.role === 'agent').slice(0, 1).map(u => (
+                  <div key={u.id} className="flex items-center gap-3">
+                    <img src={u.photo || 'https://picsum.photos/seed/agent/100'} className="w-10 h-10 rounded-full object-cover" />
+                    <div>
+                      <p className="text-xs font-bold">{u.name}</p>
+                      <p className="text-[10px] text-stone-400">{u.phone}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-100">
+                <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-3">{t('topCourier')}</h4>
+                {users.filter(u => u.role === 'courier').slice(0, 1).map(u => (
+                  <div key={u.id} className="flex items-center gap-3">
+                    <img src={u.photo || 'https://picsum.photos/seed/courier/100'} className="w-10 h-10 rounded-full object-cover" />
+                    <div>
+                      <p className="text-xs font-bold">{u.name}</p>
+                      <p className="text-[10px] text-stone-400">{u.phone}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-100">
+                <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-3">{t('topClient')}</h4>
+                {users.filter(u => u.role === 'client').slice(0, 1).map(u => (
+                  <div key={u.id} className="flex items-center gap-3">
+                    <img src={u.photo || 'https://picsum.photos/seed/client/100'} className="w-10 h-10 rounded-full object-cover" />
+                    <div>
+                      <p className="text-xs font-bold">{u.name}</p>
+                      <p className="text-[10px] text-stone-400">{u.phone}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Top Products Report */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-stone-100">
@@ -246,32 +411,30 @@ export const AdminApp: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-4">
-                  {topProducts.map((product, index) => (
-                    <div key={index} className="flex items-center gap-4">
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${
-                        index === 0 ? 'bg-gold text-white' : 
-                        index === 1 ? 'bg-stone-200 text-stone-600' : 
-                        index === 2 ? 'bg-orange-100 text-orange-600' : 
-                        'bg-stone-50 text-stone-400'
-                      }`}>
-                        {index + 1}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-stone-800">{product.name}</p>
-                        <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">{product.count} шт. продано</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-black text-gold-dark">{product.revenue.toLocaleString()} UZS</p>
-                        <div className="w-24 h-1.5 bg-stone-100 rounded-full mt-1 overflow-hidden">
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(product.revenue / topProducts[0].revenue) * 100}%` }}
-                            className="h-full bg-gold"
-                          />
+                  {topProducts.map((p, index) => {
+                    const productData = products.find(prod => prod.name === p.name);
+                    return (
+                      <div key={index} className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-stone-50 border border-stone-100 overflow-hidden flex-shrink-0">
+                          <img src={productData?.image || `https://picsum.photos/seed/${p.name}/100`} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-stone-800">{p.name}</p>
+                          <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">{p.count} шт. продано</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-black text-gold-dark">{p.revenue.toLocaleString()} UZS</p>
+                          <div className="w-24 h-1.5 bg-stone-100 rounded-full mt-1 overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${(p.revenue / topProducts[0].revenue) * 100}%` }}
+                              className="h-full bg-gold"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {topProducts.length === 0 && (
                     <div className="text-center py-8 text-stone-400 italic text-sm">Нет данных о продажах</div>
                   )}
@@ -550,6 +713,15 @@ export const AdminApp: React.FC = () => {
                       </div>
                     </div>
 
+                    {order.deliveryPhoto && (
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-stone-400 uppercase tracking-widest block">Фото доставки</label>
+                        <div className="w-full h-32 rounded-2xl overflow-hidden border border-stone-100">
+                          <img src={order.deliveryPhoto} className="w-full h-full object-cover" alt="Proof of delivery" />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="pt-2 flex justify-between items-center">
                       <span className="text-[10px] text-stone-400 font-medium">{new Date(order.createdAt).toLocaleString()}</span>
                       <div className="flex gap-2">
@@ -711,13 +883,391 @@ export const AdminApp: React.FC = () => {
         )}
         {activeTab === 'ai' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            <h2 className="text-2xl font-bold">{t('aiAssistant')}</h2>
-            <AdminAI 
-              stats={stats} 
-              recentOrders={orders} 
-              products={products} 
-              users={users} 
-            />
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black text-uzum-text uppercase tracking-tighter">AI Operations Center</h2>
+              <button 
+                onClick={async () => {
+                  await apiFetch('/api/ai/sync', { method: 'POST' });
+                  fetchAiData();
+                  speak("AI агенты синхронизированы");
+                }}
+                className="px-6 py-3 bg-gold text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-gold/20 flex items-center gap-2"
+              >
+                <Sparkles size={18} /> Sync AI Agents
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-stone-100">
+                  <h3 className="text-lg font-black text-uzum-text mb-4">AI Insights & Reports</h3>
+                  <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                    {aiReports.map(report => (
+                      <div key={report.id} className="p-5 bg-stone-50 rounded-3xl border border-stone-100 hover:border-gold/30 transition-all">
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
+                              report.agent === 'jarvis' ? 'bg-blue-100 text-blue-600' : 'bg-gold/10 text-gold'
+                            }`}>
+                              {report.agent}
+                            </span>
+                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{report.type}</span>
+                          </div>
+                          <span className="text-[10px] text-stone-400">{new Date(report.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p className="text-sm text-uzum-text leading-relaxed font-medium">{report.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-uzum-text p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden">
+                  <div className="relative z-10">
+                    <Bot size={48} className="text-gold mb-4" />
+                    <h3 className="text-xl font-black mb-2">AI Assistant</h3>
+                    <p className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-6 leading-relaxed">
+                      Управляйте бизнесом с помощью голоса и текстовых команд.
+                    </p>
+                    <button 
+                      onClick={() => setShowAI(true)}
+                      className="w-full py-4 bg-gold text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-gold/20 hover:scale-105 transition-all"
+                    >
+                      Открыть Чат
+                    </button>
+                  </div>
+                  <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-gold/10 rounded-full blur-3xl" />
+                </div>
+
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-stone-100">
+                  <h3 className="text-sm font-black text-uzum-text uppercase tracking-widest mb-4">System Health</h3>
+                  <div className="space-y-4">
+                    {systemLogs.slice(0, 3).map(log => (
+                      <div key={log.id} className="flex items-start gap-3">
+                        <div className={`w-2 h-2 rounded-full mt-1.5 ${log.level === 'error' ? 'bg-red-500' : 'bg-green-500'}`} />
+                        <div>
+                          <p className="text-xs font-bold text-stone-600">{log.message}</p>
+                          <p className="text-[9px] text-stone-400 uppercase font-black tracking-widest mt-1">{log.module} • {new Date(log.createdAt).toLocaleTimeString()}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'logs' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <h2 className="text-2xl font-black text-uzum-text uppercase tracking-tighter">System Logs</h2>
+            <div className="bg-white rounded-[2.5rem] shadow-sm border border-stone-100 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-stone-50 border-b border-stone-100">
+                      <th className="p-4 text-[10px] font-black text-uzum-muted uppercase tracking-widest">Time</th>
+                      <th className="p-4 text-[10px] font-black text-uzum-muted uppercase tracking-widest">Level</th>
+                      <th className="p-4 text-[10px] font-black text-uzum-muted uppercase tracking-widest">Module</th>
+                      <th className="p-4 text-[10px] font-black text-uzum-muted uppercase tracking-widest">Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {systemLogs.map(log => (
+                      <tr key={log.id} className="border-b border-stone-50 hover:bg-stone-50 transition-all">
+                        <td className="p-4 text-[10px] font-medium text-stone-400">{new Date(log.createdAt).toLocaleString()}</td>
+                        <td className="p-4">
+                          <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
+                            log.level === 'error' ? 'bg-red-100 text-red-600' : 
+                            log.level === 'warn' ? 'bg-yellow-100 text-yellow-600' : 
+                            'bg-blue-100 text-blue-600'
+                          }`}>
+                            {log.level}
+                          </span>
+                        </td>
+                        <td className="p-4 text-xs font-bold text-stone-600">{log.module}</td>
+                        <td className="p-4 text-xs text-uzum-text">{log.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'debts' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black text-uzum-text uppercase tracking-tighter">{t('debts')}</h2>
+              <button 
+                onClick={() => handleConfirm(async () => {
+                  const clientId = prompt("Enter Client ID:");
+                  const amount = prompt("Enter Amount:");
+                  if (clientId && amount) {
+                    await apiFetch('/api/debts', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ clientId: Number(clientId), amount: Number(amount) })
+                    });
+                    refreshData();
+                  }
+                }, "Add Debt", "Manually add a debt for a client?")}
+                className="px-6 py-3 bg-gold text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-gold/20 flex items-center gap-2"
+              >
+                <Plus size={18} /> {t('addDebt')}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {debts.map(debt => (
+                <div key={debt.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-stone-100 relative overflow-hidden group">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-14 h-14 rounded-2xl bg-stone-50 overflow-hidden border border-stone-100 shadow-inner">
+                      {debt.clientPhoto ? (
+                        <img src={debt.clientPhoto} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-stone-300">
+                          <User size={24} />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-black text-stone-800 text-lg leading-tight">{debt.clientName}</h3>
+                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{debt.clientPhone}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 mb-6">
+                    <div className="flex justify-between items-center p-3 bg-stone-50 rounded-2xl">
+                      <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Amount</span>
+                      <span className="text-lg font-black text-red-600">{debt.amount.toLocaleString()} UZS</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-stone-50 rounded-2xl">
+                      <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Status</span>
+                      <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
+                        debt.status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                      }`}>
+                        {debt.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-stone-50 rounded-2xl">
+                      <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Created</span>
+                      <span className="text-[10px] font-bold text-stone-500">{new Date(debt.createdAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {debt.status === 'pending' && (
+                    <button 
+                      onClick={() => handleConfirm(async () => {
+                        await apiFetch(`/api/debts/${debt.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ status: 'paid' })
+                        });
+                        refreshData();
+                        speak(`Долг клиента ${debt.clientName} погашен`);
+                      }, "Confirm Payment", `Mark debt of ${debt.amount.toLocaleString()} UZS as paid?`)}
+                      className="w-full py-4 bg-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-green-500/20 hover:scale-105 transition-all"
+                    >
+                      Mark as Paid
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'banners' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black text-uzum-text uppercase tracking-tighter">{t('banners')}</h2>
+              <button 
+                onClick={() => setShowAddBanner(true)}
+                className="px-6 py-3 bg-gold text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-gold/20 flex items-center gap-2"
+              >
+                <Plus size={18} /> {t('addBanner')}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {banners.map(banner => (
+                <div key={banner.id} className="bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-stone-100 group">
+                  <div className="relative h-48">
+                    <img src={banner.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {banner.videoUrl && (
+                      <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-md p-2 rounded-xl text-white">
+                        <Play size={16} fill="white" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h4 className="font-black text-stone-800 text-lg leading-tight">{banner.title}</h4>
+                        <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mt-1">{banner.link || 'No link'}</p>
+                      </div>
+                      <button 
+                        onClick={() => updateBanner(banner.id, { isActive: banner.isActive ? 0 : 1 })}
+                        className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                          banner.isActive ? 'bg-green-100 text-green-600' : 'bg-stone-100 text-stone-400'
+                        }`}
+                      >
+                        {banner.isActive ? 'Active' : 'Inactive'}
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => handleConfirm(async () => {
+                        await deleteBanner(banner.id);
+                        speak(`Баннер ${banner.title} удален`);
+                      }, "Delete Banner", `Are you sure you want to delete banner "${banner.title}"?`)}
+                      className="w-full py-3 bg-red-50 text-red-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Trash2 size={14} /> Delete Banner
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'salaries' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black text-uzum-text uppercase tracking-tighter">{t('salaries')}</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {salaryReport.map((s, i) => (
+                <div key={i} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-stone-100 flex flex-col items-center text-center relative overflow-hidden group">
+                  <div className="absolute top-4 right-4">
+                    <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
+                      s.role === 'agent' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
+                    }`}>
+                      {s.role}
+                    </span>
+                  </div>
+                  
+                  <div className="w-20 h-20 bg-stone-50 rounded-[2rem] flex items-center justify-center mb-4 text-stone-300 overflow-hidden border-4 border-white shadow-inner relative">
+                    {users.find(u => u.id === s.userId)?.photo ? (
+                      <img src={users.find(u => u.id === s.userId)?.photo} className="w-full h-full object-cover" />
+                    ) : (
+                      <User size={32} />
+                    )}
+                  </div>
+
+                  <h3 className="font-black text-stone-800 text-lg mb-1">{s.userName}</h3>
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">ID: {s.userId}</p>
+
+                  <div className="w-full space-y-3 mb-6">
+                    <div className="flex justify-between items-center p-3 bg-stone-50 rounded-2xl">
+                      <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Sales/Deliv</span>
+                      <span className="text-sm font-black text-stone-800">{s.totalSales.toLocaleString()} UZS</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-stone-50 rounded-2xl">
+                      <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Commission</span>
+                      <span className="text-sm font-black text-gold">{s.percent}%</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-stone-50 rounded-2xl">
+                      <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Fixed</span>
+                      <span className="text-sm font-black text-stone-800">{s.fixedSalary.toLocaleString()} UZS</span>
+                    </div>
+                  </div>
+
+                  <div className="w-full p-4 bg-gold/10 rounded-2xl border border-gold/20">
+                    <p className="text-[10px] font-black text-gold uppercase tracking-widest mb-1">Total Salary</p>
+                    <p className="text-xl font-black text-gold">{s.salary.toLocaleString()} UZS</p>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      const user = users.find(u => u.id === s.userId);
+                      setEditingUser({ ...user, commissionPercent: s.percent, fixedSalary: s.fixedSalary });
+                    }}
+                    className="mt-4 w-full py-3 bg-stone-100 text-stone-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-stone-200 transition-all"
+                  >
+                    Edit Details
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'kpi' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <h2 className="text-2xl font-black tracking-tight">{t('kpi')} Leaderboard</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {kpis.map((kpi, idx) => (
+                <div key={idx} className="bg-white p-6 rounded-[2rem] shadow-sm border border-stone-100 flex items-center gap-4">
+                  <div className="relative">
+                    <img src={kpi.userPhoto || `https://picsum.photos/seed/${kpi.userId}/100`} className="w-16 h-16 rounded-2xl object-cover" />
+                    <div className={`absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-xs shadow-lg ${
+                      idx === 0 ? 'bg-gold' : idx === 1 ? 'bg-stone-300' : idx === 2 ? 'bg-orange-400' : 'bg-stone-100 text-stone-400'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">{kpi.userName}</h3>
+                    <p className="text-xs text-stone-400 font-bold uppercase tracking-widest">{kpi.role}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden w-24">
+                        <div className="h-full bg-gold" style={{ width: `${Math.min(kpi.score, 100)}%` }} />
+                      </div>
+                      <span className="text-xs font-black text-gold">{kpi.score.toFixed(1)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'security' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <h2 className="text-2xl font-black tracking-tight">{t('security')} Alerts</h2>
+            <div className="bg-white rounded-[2rem] shadow-sm border border-stone-100 overflow-hidden">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-100">
+                    <th className="p-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Тип</th>
+                    <th className="p-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Пользователь</th>
+                    <th className="p-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Риск</th>
+                    <th className="p-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Детали</th>
+                    <th className="p-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Дата</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {securityAlerts.map((alert, idx) => (
+                    <tr key={idx} className="border-b border-stone-50 last:border-0 hover:bg-stone-50/50 transition-all">
+                      <td className="p-4">
+                        <span className="text-xs font-bold text-stone-800">{alert.type}</span>
+                      </td>
+                      <td className="p-4">
+                        <span className="text-xs text-stone-500">{alert.userName || 'Система'}</span>
+                      </td>
+                      <td className="p-4">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          alert.riskScore > 70 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
+                        }`}>
+                          {alert.riskScore}%
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <p className="text-[10px] text-stone-400 max-w-xs truncate">{alert.details}</p>
+                      </td>
+                      <td className="p-4">
+                        <span className="text-[10px] text-stone-400">{new Date(alert.createdAt).toLocaleString()}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </motion.div>
         )}
 
@@ -745,6 +1295,14 @@ export const AdminApp: React.FC = () => {
                   <div>
                     <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('contactPhone')}</label>
                     <input name="contact_phone" defaultValue={settings.contact_phone} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Telegram Bot Token</label>
+                    <input name="telegram_bot_token" defaultValue={settings.telegram_bot_token} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Telegram Channel ID</label>
+                    <input name="telegram_channel_id" defaultValue={settings.telegram_channel_id} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('deliveryFee')}</label>
@@ -877,65 +1435,100 @@ export const AdminApp: React.FC = () => {
         )}
 
         {activeTab === 'tracker' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 h-full flex flex-col">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold">Real-time GPS Tracker</h2>
+              <div className="flex gap-2">
+                <span className="px-3 py-1 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-500 flex items-center gap-2">
+                  Live View: Bukhara
+                </span>
+              </div>
+            </div>
+            <Map3D height="600px" />
+          </motion.div>
+        )}
+
+        {activeTab === 'finance' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            <h2 className="text-2xl font-bold">{t('tracker')}</h2>
-            <div className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-stone-100 h-[600px] relative overflow-hidden flex items-center justify-center">
-              <YMaps query={{ apikey: YANDEX_MAPS_API_KEY }}>
-                <Map 
-                  defaultState={{ center: [41.311081, 69.240562], zoom: 12 }} 
-                  className="rounded-3xl overflow-hidden h-full w-full"
-                >
-                  {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).map(u => (
-                    <Placemark 
-                      key={u.id}
-                      geometry={[Number(u.lat), Number(u.lng)]}
-                      properties={{
-                        hintContent: u.name,
-                        balloonContent: `${u.name} (${u.role === 'agent' ? t('agent') : t('courier')})`
-                      }}
-                      options={{
-                        preset: u.role === 'agent' ? 'islands#blueCircleDotIcon' : 'islands#orangeCircleDotIcon'
-                      }}
-                      onClick={() => fetchUserTrack(u.id)}
-                    />
+            <h2 className="text-2xl font-bold">Финансовый отчет</h2>
+            
+            {financeReport && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Общий доход</p>
+                  <h3 className="text-2xl font-black text-green-600">{financeReport.totalIncome.toLocaleString()} UZS</h3>
+                </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Общие расходы</p>
+                  <h3 className="text-2xl font-black text-red-600">{financeReport.totalExpenses.toLocaleString()} UZS</h3>
+                </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Чистая прибыль</p>
+                  <h3 className="text-2xl font-black text-uzum-primary">{financeReport.profit.toLocaleString()} UZS</h3>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Salaries */}
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                <div className="flex justify-between items-center mb-6">
+                  <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest">Зарплаты сотрудников</h4>
+                  <button onClick={() => {
+                    const userId = prompt("User ID:");
+                    const amount = prompt("Amount:");
+                    const type = prompt("Type (fixed/commission):");
+                    const period = prompt("Period (YYYY-MM):");
+                    if (userId && amount && type && period) {
+                      apiFetch('/api/salaries', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, amount, type, period })
+                      }).then(() => fetchFinanceData());
+                    }
+                  }} className="p-2 bg-gold/10 text-gold rounded-xl"><Plus size={16} /></button>
+                </div>
+                <div className="space-y-4">
+                  {salaries.map(s => (
+                    <div key={s.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-2xl">
+                      <div>
+                        <p className="text-sm font-bold">{s.userName}</p>
+                        <p className="text-[10px] text-stone-400 uppercase">{s.userRole} • {s.period}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-gold-dark">{s.amount.toLocaleString()} UZS</p>
+                        <span className="text-[8px] font-black uppercase bg-white px-2 py-0.5 rounded-full border border-stone-100">{s.status}</span>
+                      </div>
+                    </div>
                   ))}
-                  {selectedUserForTrack && userTrack.length > 0 && (
-                    <Polyline
-                      geometry={userTrack}
-                      options={{
-                        balloonCloseButton: false,
-                        strokeColor: '#D4AF37',
-                        strokeWidth: 4,
-                        strokeOpacity: 0.8,
-                      }}
-                    />
-                  )}
-                </Map>
-              </YMaps>
-              
-              <div className="absolute top-8 right-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 space-y-3">
-                <div className="flex justify-between items-center mb-1">
-                  <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Легенда</h4>
-                  <span className="bg-gold/10 text-gold text-[9px] px-2 py-0.5 rounded-full font-black">
-                    {users.filter(u => (u.role === 'agent' || u.role === 'courier') && u.lat != null && u.lng != null).length} в сети
-                  </span>
                 </div>
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                  <span>{t('agent')}</span>
+              </div>
+
+              {/* Expenses */}
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                <div className="flex justify-between items-center mb-6">
+                  <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest">Расходы</h4>
+                  <button onClick={() => {
+                    const title = prompt("Title:");
+                    const amount = prompt("Amount:");
+                    const category = prompt("Category:");
+                    if (title && amount && category) {
+                      apiFetch('/api/finance/expenses', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, amount, category })
+                      }).then(() => fetchFinanceData());
+                    }
+                  }} className="p-2 bg-red-50 text-red-500 rounded-xl"><Plus size={16} /></button>
                 </div>
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                  <span>{t('courier')}</span>
+                <div className="space-y-4">
+                  {financeReport?.categoryExpenses.map((ce: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-stone-50 rounded-2xl">
+                      <p className="text-sm font-bold">{ce.category}</p>
+                      <p className="text-sm font-black text-red-600">{ce.total.toLocaleString()} UZS</p>
+                    </div>
+                  ))}
                 </div>
-                {selectedUserForTrack && (
-                  <button 
-                    onClick={() => { setSelectedUserForTrack(null); setUserTrack([]); }}
-                    className="w-full mt-2 py-2 bg-stone-100 text-stone-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-stone-200 transition-all"
-                  >
-                    Скрыть трек
-                  </button>
-                )}
               </div>
             </div>
           </motion.div>
@@ -948,11 +1541,14 @@ export const AdminApp: React.FC = () => {
           { id: 'dashboard', icon: LayoutDashboard, label: t('dashboard') },
           { id: 'products', icon: Package, label: t('products') },
           { id: 'orders', icon: ShoppingBag, label: t('orders') },
-          { id: 'ai', icon: Bot, label: 'AI' },
+          { id: 'debts', icon: List, label: t('debts') },
           { id: 'banners', icon: ImageIcon, label: t('banners') },
-          { id: 'debts', icon: CreditCard, label: t('debts') },
-          { id: 'tracker', icon: Navigation, label: t('tracker') },
-          { id: 'users', icon: Users, label: t('users') },
+          { id: 'ai', icon: Bot, label: 'AI' },
+          { id: 'finance', icon: CreditCard, label: t('finance') },
+          { id: 'salaries', icon: Users, label: t('salaries') },
+          { id: 'kpi', icon: TrendingUp, label: t('kpi') },
+          { id: 'security', icon: CheckCircle, label: t('security') },
+          { id: 'users', icon: User, label: t('users') },
           { id: 'settings', icon: SettingsIcon, label: t('settings') },
         ].map(item => (
           <button
@@ -975,6 +1571,112 @@ export const AdminApp: React.FC = () => {
           </button>
         ))}
       </nav>
+
+      {/* User Edit Modal */}
+      <AnimatePresence>
+        {editingUser && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg shadow-2xl border border-stone-100 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h3 className="text-2xl font-bold tracking-tight text-stone-800">Редактировать пользователя</h3>
+                  <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mt-1">ID: {editingUser.id}</p>
+                </div>
+                <button onClick={() => { setEditingUser(null); setUserPhotoPreview(null); }} className="p-2 bg-stone-50 rounded-xl text-stone-400 hover:text-stone-800 transition-all"><X size={20} /></button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                await updateUser(editingUser.id, {
+                  name: formData.get('name') as string,
+                  phone: formData.get('phone') as string,
+                  password: formData.get('password') as string,
+                  role: formData.get('role') as string,
+                  carType: formData.get('carType') as string,
+                  photo: userPhotoPreview || editingUser.photo,
+                  commissionPercent: Number(formData.get('commissionPercent')),
+                  fixedSalary: Number(formData.get('fixedSalary'))
+                });
+                speak(`Данные пользователя ${formData.get('name')} обновлены`);
+                setEditingUser(null);
+                setUserPhotoPreview(null);
+                fetchFinanceData();
+              }} className="space-y-5">
+                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-stone-200 rounded-[2rem] bg-stone-50 hover:bg-stone-100 transition-all cursor-pointer relative overflow-hidden group h-48">
+                  {userPhotoPreview || editingUser.photo ? (
+                    <img src={userPhotoPreview || editingUser.photo} className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <User className="text-stone-300 mb-2" size={40} />
+                      <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Загрузить фото</p>
+                    </div>
+                  )}
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={(e) => handleFileChange(e, 'user')}
+                    className="absolute inset-0 opacity-0 cursor-pointer" 
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-5">
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('name')}</label>
+                    <input name="name" defaultValue={editingUser.name} required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('phone')}</label>
+                    <input name="phone" defaultValue={editingUser.phone} required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('password')}</label>
+                    <input name="password" type="password" defaultValue={editingUser.password} required className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">{t('role')}</label>
+                    <select name="role" defaultValue={editingUser.role} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium appearance-none">
+                      <option value="client">Client</option>
+                      <option value="agent">Agent</option>
+                      <option value="courier">Courier</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  
+                  {(editingUser.role === 'agent' || editingUser.role === 'courier') && (
+                    <div className="grid grid-cols-2 gap-4 p-4 bg-gold/5 rounded-2xl border border-gold/10">
+                      <div>
+                        <label className="block text-[10px] font-black text-gold-dark uppercase tracking-widest mb-2">Комиссия %</label>
+                        <input name="commissionPercent" type="number" defaultValue={editingUser.commissionPercent || 10} className="w-full p-3 rounded-xl bg-white border border-gold/20 outline-none focus:border-gold transition-all font-bold" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-gold-dark uppercase tracking-widest mb-2">Фикс. Зарплата</label>
+                        <input name="fixedSalary" type="number" defaultValue={editingUser.fixedSalary || 0} className="w-full p-3 rounded-xl bg-white border border-gold/20 outline-none focus:border-gold transition-all font-bold" />
+                      </div>
+                    </div>
+                  )}
+
+                  {editingUser.role === 'courier' && (
+                    <div>
+                      <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Тип транспорта</label>
+                      <input name="carType" defaultValue={editingUser.carType} className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" placeholder="Nexia 3, Spark..." />
+                    </div>
+                  )}
+                </div>
+                <div className="pt-4">
+                  <button type="submit" className="w-full gold-gradient text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.5rem] shadow-xl hover:shadow-gold/30 transition-all active:scale-95">
+                    {t('save')}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <ConfirmDialog 
         isOpen={confirmDialog.isOpen}
@@ -1410,12 +2112,17 @@ export const AdminApp: React.FC = () => {
                   role: formData.get('role') as string,
                   carType: formData.get('carType') as string,
                   carPhoto: formData.get('carPhoto') as string,
-                  photo: userPhotoPreview || undefined
+                  photo: userPhotoPreview || undefined,
+                  commissionPercent: Number(formData.get('commissionPercent')),
+                  fixedSalary: Number(formData.get('fixedSalary'))
                 };
                 
                 handleConfirm(async () => {
                   if (editingUser) {
                     await updateUser(editingUser.id, data);
+                    if (activeTab === 'salaries' || activeTab === 'finance') {
+                      fetchFinanceData();
+                    }
                   } else {
                     await apiFetch('/api/auth/register', {
                       method: 'POST',
@@ -1486,12 +2193,77 @@ export const AdminApp: React.FC = () => {
                     </select>
                     <input name="carPhoto" defaultValue={editingUser?.carPhoto || ''} placeholder="URL фото машины" className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" />
                   </div>
+
+                  {/* Salary Details for Agents/Couriers */}
+                  {(editingUser?.role === 'agent' || editingUser?.role === 'courier') && (
+                    <div className="space-y-4 pt-4 border-t border-stone-100">
+                      <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Зарплата и Комиссия</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Комиссия (%)</label>
+                          <input 
+                            name="commissionPercent" 
+                            type="number" 
+                            defaultValue={commissions.find(c => c.agentId === editingUser?.id)?.percent || 10} 
+                            className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Оклад (UZS)</label>
+                          <input 
+                            name="fixedSalary" 
+                            type="number" 
+                            defaultValue={commissions.find(c => c.agentId === editingUser?.id)?.fixedSalary || 0} 
+                            className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-gold transition-all font-medium" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button type="submit" className="w-full gold-gradient text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.5rem] shadow-xl hover:shadow-gold/30 transition-all active:scale-95">
                   {editingUser ? t('save') : t('createAccount')}
                 </button>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* AI Assistant Modal */}
+      <AnimatePresence>
+        {showAI && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-4xl h-[80vh] shadow-2xl border border-stone-100 overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gold/10 rounded-xl flex items-center justify-center text-gold">
+                    <Bot size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-uzum-text">AI Assistant</h3>
+                    <p className="text-[10px] font-black text-uzum-muted uppercase tracking-widest">Interactive Chat</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowAI(false)} className="p-2 bg-white rounded-xl text-stone-400 hover:text-stone-800 shadow-sm transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <AdminAI 
+                  stats={stats} 
+                  orders={orders} 
+                  products={products} 
+                  users={users} 
+                />
+              </div>
             </motion.div>
           </motion.div>
         )}

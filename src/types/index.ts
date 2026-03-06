@@ -68,6 +68,7 @@ export interface Order {
   longitude?: number;
   createdAt: string;
   items: OrderItem[];
+  deliveryPhoto?: string;
 }
 
 export interface Stats {
@@ -87,4 +88,7 @@ export interface Debt {
   dueDate?: string;
   status: 'pending' | 'paid';
   createdAt: string;
+  clientPhoto?: string;
+  courierName?: string;
+  agentName?: string;
 }

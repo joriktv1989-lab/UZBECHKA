@@ -24,6 +24,18 @@ export const CourierApp: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [handoverPayment, setHandoverPayment] = useState<'cash' | 'card' | 'debt'>('cash');
   const [dueDate, setDueDate] = useState('');
+  const [deliveryPhoto, setDeliveryPhoto] = useState<string | null>(null);
+
+  const handleDeliveryPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDeliveryPhoto(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -76,7 +88,10 @@ export const CourierApp: React.FC = () => {
   const handleHandover = async () => {
     if (!selectedOrder) return;
 
-    const updates: any = { orderStatus: 'delivered' };
+    const updates: any = { 
+      orderStatus: 'delivered',
+      deliveryPhoto: deliveryPhoto 
+    };
     
     if (handoverPayment === 'debt') {
       if (!dueDate) return alert('Пожалуйста, выберите срок оплаты');
@@ -362,6 +377,27 @@ export const CourierApp: React.FC = () => {
               </div>
 
               <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="block text-[10px] font-black text-uzum-muted uppercase tracking-widest ml-1">Фото подтверждение</label>
+                  <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-stone-200 rounded-2xl bg-stone-50 hover:bg-stone-100 transition-all cursor-pointer relative overflow-hidden group h-32">
+                    {deliveryPhoto ? (
+                      <img src={deliveryPhoto} className="absolute inset-0 w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex flex-col items-center">
+                        <Plus className="text-stone-300 mb-1" size={24} />
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Сделать фото</p>
+                      </div>
+                    )}
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      capture="environment"
+                      onChange={handleDeliveryPhotoChange}
+                      className="absolute inset-0 opacity-0 cursor-pointer" 
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   <label className="block text-[10px] font-black text-uzum-muted uppercase tracking-widest ml-1">Способ оплаты</label>
                   <div className="grid grid-cols-3 gap-2">
