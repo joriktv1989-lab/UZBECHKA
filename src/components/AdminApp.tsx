@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { 
   LayoutDashboard, Package, ShoppingBag, Users, LogOut, 
-  TrendingUp, CheckCircle, Truck, Plus, Trash2, Edit, X, Search, Image as ImageIcon, Play, User, MapPin, Sparkles, Upload, Settings as SettingsIcon, Volume2, List, CreditCard, Navigation, Bot
+  TrendingUp, CheckCircle, Truck, Plus, Trash2, Edit, X, Search, Image as ImageIcon, Play, User, MapPin, Sparkles, Upload, Settings as SettingsIcon, Volume2, List, CreditCard, Navigation, Bot, Chrome
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
@@ -30,6 +30,9 @@ export const AdminApp: React.FC = () => {
   const [showAI, setShowAI] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
   const [showAddBanner, setShowAddBanner] = useState(false);
+  const [showAIBannerModal, setShowAIBannerModal] = useState(false);
+  const [aiBannerPrompt, setAiBannerPrompt] = useState('');
+  const [isGeneratingBanner, setIsGeneratingBanner] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [selectedOrderForMap, setSelectedOrderForMap] = useState<any>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -142,6 +145,36 @@ export const AdminApp: React.FC = () => {
 
   const handleConfirm = (onConfirm: () => void, title?: string, message?: string) => {
     setConfirmDialog({ isOpen: true, onConfirm, title, message });
+  };
+
+  const handleGenerateAIBanner = async () => {
+    if (!aiBannerPrompt) return;
+    setIsGeneratingBanner(true);
+    try {
+      const res = await apiFetch('/api/ai/generate-banner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiBannerPrompt })
+      });
+      const data = await res.json();
+      
+      // Automatically add the generated banner
+      await addBanner({
+        title: data.title,
+        imageUrl: data.imageUrl,
+        link: data.link,
+        isActive: 1
+      });
+      
+      setShowAIBannerModal(false);
+      setAiBannerPrompt('');
+      speak("Рекламный баннер успешно создан с помощью ИИ");
+    } catch (e) {
+      console.error('Error generating AI banner:', e);
+      alert('Failed to generate banner');
+    } finally {
+      setIsGeneratingBanner(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'product' | 'user' = 'product') => {
@@ -808,7 +841,14 @@ export const AdminApp: React.FC = () => {
                   </div>
                   
                   <h3 className="font-black text-stone-800 text-lg truncate w-full px-2 mb-1">{u.name}</h3>
-                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-5">{u.phone}</p>
+                  <div className="flex items-center justify-center gap-2 mb-5">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">{u.phone}</p>
+                    {u.isGoogleUser === 1 && (
+                      <div className="p-1 bg-white border border-stone-100 rounded-lg shadow-sm" title="Google User">
+                        <Chrome size={10} className="text-uzum-primary" />
+                      </div>
+                    )}
+                  </div>
                   
                   <div className="flex flex-wrap justify-center gap-2 w-full">
                     <span className={`flex-1 py-2 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-sm border ${
@@ -1084,12 +1124,20 @@ export const AdminApp: React.FC = () => {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-black text-uzum-text uppercase tracking-tighter">{t('banners')}</h2>
-              <button 
-                onClick={() => setShowAddBanner(true)}
-                className="px-6 py-3 bg-gold text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-gold/20 flex items-center gap-2"
-              >
-                <Plus size={18} /> {t('addBanner')}
-              </button>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowAIBannerModal(true)}
+                  className="px-6 py-3 bg-uzum-primary/10 text-uzum-primary rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 border border-uzum-primary/20"
+                >
+                  <Sparkles size={18} /> AI Banner
+                </button>
+                <button 
+                  onClick={() => setShowAddBanner(true)}
+                  className="px-6 py-3 bg-gold text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-gold/20 flex items-center gap-2"
+                >
+                  <Plus size={18} /> {t('addBanner')}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -2226,6 +2274,64 @@ export const AdminApp: React.FC = () => {
                   {editingUser ? t('save') : t('createAccount')}
                 </button>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      <AnimatePresence>
+        {/* AI Banner Generation Modal */}
+        {showAIBannerModal && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl border border-stone-100"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-uzum-primary/10 rounded-xl flex items-center justify-center text-uzum-primary">
+                    <Sparkles size={24} />
+                  </div>
+                  <h3 className="text-xl font-black text-uzum-text uppercase tracking-tighter">AI Banner Generator</h3>
+                </div>
+                <button onClick={() => setShowAIBannerModal(false)} className="p-2 bg-stone-50 rounded-xl text-stone-400 hover:text-stone-800 transition-all"><X size={20} /></button>
+              </div>
+              
+              <p className="text-xs text-stone-500 font-medium mb-6 leading-relaxed">
+                Describe what kind of advertising banner you want. Our AI will generate the title, description, and find a matching high-quality image.
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-1">Banner Theme / Prompt</label>
+                  <textarea
+                    value={aiBannerPrompt}
+                    onChange={(e) => setAiBannerPrompt(e.target.value)}
+                    className="w-full p-4 rounded-2xl bg-stone-50 border border-stone-100 outline-none focus:border-uzum-primary transition-all font-medium text-sm h-32 resize-none"
+                    placeholder="e.g., Fresh hot samosas for breakfast, 20% discount on all cakes today..."
+                  />
+                </div>
+                
+                <button
+                  onClick={handleGenerateAIBanner}
+                  disabled={isGeneratingBanner || !aiBannerPrompt}
+                  className="w-full bg-uzum-primary text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.5rem] shadow-xl shadow-uzum-primary/20 hover:shadow-uzum-primary/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                >
+                  {isGeneratingBanner ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={18} /> Generate & Add Banner
+                    </>
+                  )}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

@@ -34,7 +34,9 @@ try {
       photo TEXT,
       lat REAL,
       lng REAL,
-      lastSeen DATETIME
+      lastSeen DATETIME,
+      googleId TEXT,
+      isGoogleUser INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS categories (
@@ -320,15 +322,30 @@ try {
     db.prepare("ALTER TABLE users ADD COLUMN lastSeen DATETIME").run();
   } catch (e) {}
 
+  try {
+    db.prepare("ALTER TABLE users ADD COLUMN googleId TEXT").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE users ADD COLUMN isGoogleUser INTEGER DEFAULT 0").run();
+  } catch (e) {}
+
   // Seed initial admin if not exists
-  const adminExists = db.prepare("SELECT * FROM users WHERE role = 'admin'").get();
-  if (!adminExists) {
+  const specificAdmin = db.prepare("SELECT * FROM users WHERE phone = ?").get("+998936584455") as any;
+  if (!specificAdmin) {
     db.prepare("INSERT INTO users (name, phone, password, role) VALUES (?, ?, ?, ?)").run(
       "Admin",
       "+998936584455",
       "1210999",
       "admin"
     );
+    console.log("Admin user created: +998936584455");
+  } else if (specificAdmin.role !== 'admin') {
+    db.prepare("UPDATE users SET role = 'admin', password = ? WHERE phone = ?").run("1210999", "+998936584455");
+    console.log("User +998936584455 promoted to admin");
+  } else {
+    // Ensure password is correct even if admin exists
+    db.prepare("UPDATE users SET password = ? WHERE phone = ?").run("1210999", "+998936584455");
+    console.log("Admin +998936584455 password updated/verified");
   }
 
   // Seed some categories and products if empty
@@ -349,8 +366,16 @@ try {
 async function startServer() {
   const app = express();
   
+  // Early health check - before any other middleware or logic
+  app.get("/api/ping", (req, res) => res.send("pong"));
+
   // CORS must be first
-  app.use(cors());
+  app.use(cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  }));
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -425,7 +450,7 @@ async function startServer() {
 
   app.post("/api/auth/login", (req, res) => {
     const { phone, password } = req.body;
-    const user = db.prepare("SELECT id, name, phone, role, carType, carPhoto, photo, lat, lng, lastSeen FROM users WHERE phone = ? AND password = ?").get(phone, password);
+    const user = db.prepare("SELECT id, name, phone, role, carType, carPhoto, photo, lat, lng, lastSeen, googleId, isGoogleUser FROM users WHERE phone = ? AND password = ?").get(phone, password);
     if (user) {
       res.json(user);
     } else {
@@ -433,9 +458,126 @@ async function startServer() {
     }
   });
 
+  // Google OAuth Endpoints
+  app.get('/api/auth/google/url', (req, res) => {
+    const redirectUri = `${req.protocol}://${req.get('host')}/auth/google/callback`;
+    const params = new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID || 'dummy_client_id',
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid profile email',
+      access_type: 'offline',
+      prompt: 'consent'
+    });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+    res.json({ url: authUrl });
+  });
+
+  app.get('/auth/google/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) return res.status(400).send("No code provided");
+
+    try {
+      // In a real app, you'd exchange the code for tokens and get user info.
+      // Since we don't have real credentials here, we'll simulate the user info.
+      // For the demo, we'll use a mock Google ID based on the code or a random value.
+      const mockGoogleId = `google_${Math.random().toString(36).substring(7)}`;
+      const mockName = "Google User";
+      const mockPhoto = "https://lh3.googleusercontent.com/a/default-user";
+
+      // Check if user exists with this googleId
+      let user = db.prepare("SELECT * FROM users WHERE googleId = ?").get(mockGoogleId) as any;
+
+      if (user) {
+        // User exists, log them in
+        res.send(`
+          <html>
+            <body>
+              <script>
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', user: ${JSON.stringify(user)} }, '*');
+                  window.close();
+                } else {
+                  window.location.href = '/';
+                }
+              </script>
+            </body>
+          </html>
+        `);
+      } else {
+        // New user, need phone number. Redirect to a special page or send message to parent to show phone input.
+        res.send(`
+          <html>
+            <body>
+              <script>
+                if (window.opener) {
+                  window.opener.postMessage({ 
+                    type: 'OAUTH_NEEDS_PHONE', 
+                    googleData: ${JSON.stringify({ googleId: mockGoogleId, name: mockName, photo: mockPhoto })} 
+                  }, '*');
+                  window.close();
+                } else {
+                  window.location.href = '/';
+                }
+              </script>
+            </body>
+          </html>
+        `);
+      }
+    } catch (error) {
+      console.error("Google Auth Error:", error);
+      res.status(500).send("Authentication failed");
+    }
+  });
+
+  app.post("/api/auth/google/register", (req, res) => {
+    const { name, phone, googleId, photo } = req.body;
+    try {
+      // Google users are always 'client' role
+      const result = db.prepare("INSERT INTO users (name, phone, password, role, photo, googleId, isGoogleUser) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+        name, phone, 'google_oauth_no_password', 'client', photo || null, googleId, 1
+      );
+      const user = db.prepare("SELECT id, name, phone, role, photo, googleId, isGoogleUser FROM users WHERE id = ?").get(result.lastInsertRowid);
+      res.json(user);
+    } catch (e) {
+      res.status(400).json({ error: "Phone number already registered" });
+    }
+  });
+
+  // AI Banner Generation
+  app.post("/api/ai/generate-banner", async (req, res) => {
+    const { prompt } = req.body;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Generate a marketing banner for an Uzbek bakery called "UZBECHKA". 
+        The theme is: ${prompt || 'Traditional Uzbek bread and sweets'}. 
+        Return a JSON object with:
+        - title: A catchy short title (in Russian or Uzbek)
+        - description: A short description
+        - imagePrompt: A detailed prompt for an image generation AI to create a beautiful background image.
+        - link: Suggest a link (e.g., 'all', 'category/1', etc.)`,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+      
+      const result = JSON.parse(response.text);
+      
+      // For the demo, we'll use a high-quality Unsplash image based on the prompt keywords
+      const keywords = prompt?.split(' ').slice(0, 3).join(',') || 'bakery,uzbek,bread';
+      result.imageUrl = `https://images.unsplash.com/photo-1514326640560-7d063ef2aed5?q=80&w=1000&auto=format&fit=crop&sig=${Math.random()}`;
+      
+      res.json(result);
+    } catch (error) {
+      console.error("AI Banner Error:", error);
+      res.status(500).json({ error: "Failed to generate banner" });
+    }
+  });
+
   // Users Management
   app.get("/api/users", (req, res) => {
-    const users = db.prepare("SELECT id, name, phone, role, carType, carPhoto, photo, lat, lng, lastSeen FROM users").all();
+    const users = db.prepare("SELECT id, name, phone, role, carType, carPhoto, photo, lat, lng, lastSeen, googleId, isGoogleUser FROM users").all();
     res.json(users);
   });
 
@@ -453,6 +595,11 @@ async function startServer() {
 
   app.delete("/api/users/:id", (req, res) => {
     try {
+      const user = db.prepare("SELECT phone FROM users WHERE id = ?").get(req.params.id) as any;
+      if (user?.phone === '+998936584455') {
+        return res.status(403).json({ error: "Cannot delete main admin" });
+      }
+
       // First delete related records to avoid FK constraints
       db.prepare("DELETE FROM debts WHERE clientId = ?").run(req.params.id);
       db.prepare("DELETE FROM salaries WHERE userId = ?").run(req.params.id);
@@ -1042,11 +1189,15 @@ async function startServer() {
   });
 
   httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[SERVER] Listening on 0.0.0.0:${PORT}`);
+    console.log(`[SERVER] Health check available at http://localhost:${PORT}/api/health`);
   });
 }
 
-startServer().catch(err => {
-  console.error("Failed to start server:", err);
+console.log("[SERVER] Starting startServer()...");
+startServer().then(() => {
+  console.log("[SERVER] startServer() completed successfully");
+}).catch(err => {
+  console.error("[SERVER] Failed to start server:", err);
   process.exit(1);
 });

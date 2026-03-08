@@ -120,7 +120,9 @@ export const translations = {
     high: "Высокий",
     critical: "Критический",
     autoFix: "Авто-исправление",
-    finance: "Финансы"
+    finance: "Финансы",
+    addDebt: "Добавить долг",
+    or: "или"
   },
   uz: {
     appName: "Uzbechka",
@@ -243,6 +245,8 @@ export const translations = {
     high: "Yuqori",
     critical: "Kritik",
     autoFix: "Avto-tuzatish",
-    finance: "Moliya"
+    finance: "Moliya",
+    addDebt: "Qarz qo'shish",
+    or: "yoki"
   }
 };

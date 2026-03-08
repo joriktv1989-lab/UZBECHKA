@@ -9,6 +9,8 @@ export interface User {
   lat?: number;
   lng?: number;
   lastSeen?: string;
+  googleId?: string;
+  isGoogleUser?: number;
 }
 
 export interface Category {
